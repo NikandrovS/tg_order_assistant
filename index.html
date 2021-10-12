@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main>
+    <header>
+        <h2>Доступные заказы</h2>
+        <button id="report-button">обновить</button>
+        <a href="http://193.168.46.179:3000/api/download">Скачать таблицу</a>
+    </header>
+    <table>
+        <thead>
+        <tr>
+            <th>Клиент</th>
+            <th>Магазин</th>
+            <th>Продукт</th>
+            <th>Количество, кг.</th>
+            <th>Дата заказа</th>
+        </tr>
+        </thead>
+        <tbody id="table-body">
+        <tr>
+            <td colspan="5">Заказов еще нет</td>
+        </tr>
+        </tbody>
+    </table>
+</main>
+<script>
+    window.onload = function () {
+        // ordersFetch();
+
+        async function ordersFetch() {
+            const res = await fetch('http://193.168.46.179:3000/api/');
+            const orders = await res.json();
+
+            if (orders.length) {
+                const table = document.getElementById('table-body');
+                table.innerHTML = '';
+                orders.forEach(order => {
+                    const tr = document.createElement('tr');
+
+                    for (const [key, value] of Object.entries(order)) {
+                        const td = document.createElement('td');
+                        if (key === 'createdAt') {
+                            td.innerText = new Date(value).toLocaleDateString();
+                        } else {
+                            td.innerText = value;
+                        }
+                        tr.append(td);
+                    }
+
+                    table.append(tr);
+                });
+            }
+        }
+
+        const btn = document.getElementById('report-button');
+        btn.addEventListener('click', () => {
+            ordersFetch();
+        });
+    };
+</script>
+</body>
+</html>
