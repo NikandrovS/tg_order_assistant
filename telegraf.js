@@ -25,7 +25,7 @@ const cancel_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Отмена', 'cancel')
 ]);
 
-const items_keyboard = Markup.keyboard([['Колбаса', 'Сыр', 'Хлеб'], ['Ветчина', 'Молоко', 'Кефир', 'Мука'], ['Макароны', 'Курица', 'Вода']]);
+const items_keyboard = Markup.keyboard([['Колбаса', 'Сыр', 'Хлеб'], ['Ветчина', 'Молоко', 'Кефир', 'Мука'], ['Макароны', 'Курица', 'Вода'], ['Отмена']]);
 
 const exit_keyboard = Markup.keyboard(['Отмена']);
 const remove_keyboard = Markup.removeKeyboard();
@@ -34,37 +34,40 @@ const remove_keyboard = Markup.removeKeyboard();
 const orderScene = new BaseScene('orderScene');
 orderScene.enter(async ctx => {
     if (!ctx.session.companyList.length) {
-        return ctx.reply('Укажите название магазина', exit_keyboard);
+        return ctx.reply('Укажите название организации', exit_keyboard);
     }
-    ctx.reply('Выбор организации', exit_keyboard);
+    const { message_id } = await ctx.reply(`Выбор организации.`, exit_keyboard);
+    ctx.scene.state.welcomeMessage = message_id;
     return ctx.reply(`Организация: ${ ctx.session.companyList[0].company }. Желаете продолжить?`, company_confirm_keyboard);
 });
 orderScene.action('continue', async ctx => {
     ctx.deleteMessage();
+    ctx.deleteMessage(ctx.scene.state.welcomeMessage);
     ctx.session.store = ctx.session.companyList[0].company;
-    await ctx.reply(`Выбран магазин: ${ ctx.session.store }.`);
+    await ctx.reply(`Выбрана организация: ${ ctx.session.store }.`);
     setTimeout(() => {
-        ctx.reply(`Какой продукт необходимо доставить в магазин ${ ctx.session.store }?`, items_keyboard);
+        ctx.reply(`Какой продукт необходимо доставить в ${ ctx.session.store }?`, items_keyboard);
     }, 500);
     return ctx.scene.enter('itemScene', { store: ctx.session.store }, true);
 });
 orderScene.action('skip', ctx => {
     ctx.deleteMessage();
+    ctx.deleteMessage(ctx.scene.state.welcomeMessage);
     ctx.session.companyList.shift();
     return ctx.scene.enter('orderScene');
 });
 orderScene.on('text', ctx => {
     ctx.session.store = ctx.message.text;
-    ctx.reply(`Выбран магазин: ${ ctx.message.text }.`);
+    ctx.reply(`Выбрана организация: ${ ctx.message.text }.`);
     setTimeout(() => {
-        ctx.reply(`Какой продукт необходимо доставить в магазин ${ ctx.message.text }?`, items_keyboard);
+        ctx.reply(`Какой продукт необходимо доставить в ${ ctx.message.text }?`, items_keyboard);
     }, 500);
     return ctx.scene.enter('itemScene', { store: ctx.message.text }, true);
 });
 orderScene.leave();
 
+// Выбор продукта
 const itemScene = new BaseScene('itemScene');
-// itemScene.enter(ctx => ctx.reply('Укажите название продукта', exit_keyboard));
 itemScene.on('text', async ctx => {
     ctx.session.product = ctx.message.text;
     ctx.session.user = ctx.message.from.id;
@@ -91,11 +94,14 @@ countScene.action('done', ctx => {
     if (!ctx.session.weight) {
         return ctx.reply('Необходимо указать вес!');
     } else {
+        ctx.scene.state.completed = true;
         return ctx.scene.leave();
     }
 });
 
+// Выбор количества
 countScene.leave(async (ctx) => {
+    if (!ctx.scene.state.completed) return;
     const data = {
         user: ctx.session.user,
         store: ctx.session.store,
@@ -107,12 +113,10 @@ countScene.leave(async (ctx) => {
     }
     try {
         const res = await axios.post(process.env.BACKEND_HOST + '/api', data);
-        await ctx.reply(`Ваш заказ в магазин ${ ctx.session.store } оформлен.`);
+        await ctx.reply(`Ваш заказ на организацию ${ ctx.session.store } оформлен.`);
 
         if (res.status === 200) {
-            // setTimeout(() => {
             await ctx.reply(`В заказе: ${ ctx.session.product }, в количестве ${ ctx.session.weight }кг.`, menu_keyboard);
-            // }, 500);
         }
     } catch (err) {
         console.log(err.message || err);
@@ -205,9 +209,7 @@ function textHelper(count) {
         case 1:
             return 'организация';
         case 2:
-            return 'организации';
         case 3:
-            return 'организации';
         case 4:
             return 'организации';
         default:
