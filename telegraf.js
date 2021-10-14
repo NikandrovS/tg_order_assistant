@@ -1,7 +1,7 @@
 const axios = require('axios');
-const { Telegraf, session, Scenes: { BaseScene, WizardScene, Stage }, Markup } = require('telegraf');
+const { Telegraf, session, Scenes: { BaseScene, Stage }, Markup } = require('telegraf');
+const products = require('./config/product.config');
 
-const menu_keyboard = Markup.keyboard(['📦 Заказ', '‍🔧 Настройки']);
 const company_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Изменить', 'edit'),
     Markup.button.callback('Добавить', 'add')
@@ -12,31 +12,68 @@ const new_company_keyboard = Markup.inlineKeyboard([
 const delete_keyboard = (id) => Markup.inlineKeyboard([
     Markup.button.callback('Удалить', 'delete:' + id)
 ]);
-const count_keyboard = Markup.inlineKeyboard([
-    Markup.button.callback('-', 'decrease'),
-    Markup.button.callback('ok', 'done'),
-    Markup.button.callback('+', 'increase')
+const product_keyboard = Markup.inlineKeyboard(
+    products
+        .reduce((acc, item, idx) => {
+            return [...acc, Markup.button.callback(item.name, 'choose:' + idx)];
+        }, [])
+        .reduce((resultArray, item, index) => {
+            const chunkIndex = Math.floor(index / 2);
+
+            if (!resultArray[chunkIndex]) {
+                resultArray[chunkIndex] = []; // start a new chunk
+            }
+
+            resultArray[chunkIndex].push(item);
+
+            if (index === products.length - 1) {
+                resultArray.push([
+                    Markup.button.callback('Отмена', 'cancel'),
+                    Markup.button.callback('Продолжить', 'continue')
+                ]);
+            }
+
+            return resultArray;
+        }, [])
+);
+const product_action_keyboard = (productId) => Markup.inlineKeyboard([
+    [
+        Markup.button.callback('Возврат', 'return:' + productId),
+        Markup.button.callback('Заказ', 'order:' + productId)
+    ],
+    [
+        Markup.button.callback('⇦ Назад', 'back')
+    ]
+]);
+const product_count_keyboard = (productId) => Markup.inlineKeyboard([
+    [
+        Markup.button.callback('-', 'decrease:' + productId),
+        Markup.button.callback('+', 'increase:' + productId)
+    ],
+    [
+        Markup.button.callback('✔ ok', 'back')
+    ]
 ]);
 const company_confirm_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Пропустить', 'skip'),
     Markup.button.callback('Продолжить', 'continue')
 ]);
+const order_confirm_keyboard = Markup.inlineKeyboard([
+    Markup.button.callback('Назад', 'back'),
+    Markup.button.callback('Заказать', 'confirm')
+]);
 const cancel_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Отмена', 'cancel')
 ]);
-
-const items_keyboard = Markup.keyboard([['Колбаса', 'Сыр', 'Хлеб'], ['Ветчина', 'Молоко', 'Кефир', 'Мука'], ['Макароны', 'Курица', 'Вода'], ['Отмена']]);
-
-const exit_keyboard = Markup.keyboard(['Отмена']);
-const remove_keyboard = Markup.removeKeyboard();
 
 // Оформление заказа
 const orderScene = new BaseScene('orderScene');
 orderScene.enter(async ctx => {
     if (!ctx.session.companyList.length) {
-        return ctx.reply('Укажите название организации', exit_keyboard);
+        await ctx.reply('У вас нет доступных организаций');
+        return ctx.scene.leave();
     }
-    const { message_id } = await ctx.reply(`Выбор организации.`, exit_keyboard);
+    const { message_id } = await ctx.reply(`Выбор организации.`);
     ctx.scene.state.welcomeMessage = message_id;
     return ctx.reply(`Организация: ${ ctx.session.companyList[0].company }. Желаете продолжить?`, company_confirm_keyboard);
 });
@@ -46,87 +83,204 @@ orderScene.action('continue', async ctx => {
     ctx.session.store = ctx.session.companyList[0].company;
     await ctx.reply(`Выбрана организация: ${ ctx.session.store }.`);
     setTimeout(() => {
-        ctx.reply(`Какой продукт необходимо доставить в ${ ctx.session.store }?`, items_keyboard);
+        return ctx.scene.enter('itemScene');
     }, 500);
-    return ctx.scene.enter('itemScene', { store: ctx.session.store }, true);
 });
 orderScene.action('skip', ctx => {
     ctx.deleteMessage();
     ctx.deleteMessage(ctx.scene.state.welcomeMessage);
     ctx.session.companyList.shift();
-    return ctx.scene.enter('orderScene');
+    if (ctx.session.companyList.length) {
+        return ctx.scene.enter('orderScene');
+    }
+    return ctx.scene.leave();
 });
-orderScene.on('text', ctx => {
-    ctx.session.store = ctx.message.text;
-    ctx.reply(`Выбрана организация: ${ ctx.message.text }.`);
-    setTimeout(() => {
-        ctx.reply(`Какой продукт необходимо доставить в ${ ctx.message.text }?`, items_keyboard);
-    }, 500);
-    return ctx.scene.enter('itemScene', { store: ctx.message.text }, true);
-});
-orderScene.leave();
+orderScene.leave(ctx => ctx.session.cart = []);
 
 // Выбор продукта
 const itemScene = new BaseScene('itemScene');
-itemScene.on('text', async ctx => {
-    ctx.session.product = ctx.message.text;
-    ctx.session.user = ctx.message.from.id;
-    await ctx.reply(`В каком количестве необходим продукт ${ ctx.message.text }?`, exit_keyboard);
-    return ctx.scene.enter('countScene', { store: ctx.message.text });
+itemScene.enter(ctx => ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard));
+
+// Выбор продукта
+itemScene.action(/choose:[0-9]{1,2}/, ctx => {
+    const id = ctx.callbackQuery.data.split(':')[1];
+    const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
+    if (itemInCart === -1) return ctx.editMessageText(products[id].name, product_action_keyboard(id));
+    return ctx.editMessageText(`
+    ${ products[id].name }:
+    Заказ - ${ ctx.session.cart[itemInCart].order } кг.
+    Возврат - ${ ctx.session.cart[itemInCart].return } г.`, product_action_keyboard(id));
 });
+itemScene.action('cancel', ctx => {
+    ctx.deleteMessage();
+    ctx.reply('Отменено');
+    return ctx.scene.leave();
+});
+
+// Действия с продуктом
+itemScene.action(/order:[0-9]{1,2}/, ctx => {
+    const id = ctx.callbackQuery.data.split(':')[1];
+    const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
+    if (!ctx.session.cart[itemInCart] || !ctx.session.cart[itemInCart].order) {
+        return ctx.editMessageText(products[id].name, product_count_keyboard(id));
+    }
+    return ctx.editMessageText(`${ products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
+});
+itemScene.action(/return:[0-9]{1,2}/, ctx => {
+    ctx.deleteMessage();
+    const id = ctx.callbackQuery.data.split(':')[1];
+    return ctx.scene.enter('returnScene', { product: id });
+});
+
+itemScene.action('back', ctx => {
+    return ctx.editMessageText(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard);
+});
+
+function cartPreviewGenerator(cart) {
+    let totalString = 'В вашем заказе:';
+
+    cart.forEach((product, idx) => {
+        if (product.order || product.return) {
+            totalString += `\n${ idx + 1 }) ${ product.name } - `;
+        }
+        if (product.order) {
+            totalString += `заказ ${ product.order } кг. `;
+        }
+        if (product.order && product.return) {
+            totalString += `/ `;
+        }
+        if (product.return) {
+            totalString += `возврат ${ product.return } г.`;
+        }
+    });
+    return totalString;
+}
+
+itemScene.action('continue', ctx => {
+    if (!ctx.session.cart.length) return;
+    ctx.deleteMessage();
+    return ctx.scene.enter('confirmScene');
+});
+
+// Действие с весом
+itemScene.action(/increase:[0-9]{1,2}/, ctx => {
+    const id = ctx.callbackQuery.data.split(':')[1];
+    let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
+
+    if (itemInCart === -1) {
+        itemInCart = (ctx.session.cart.push({ id, name: products[id].name, order: 0, return: 0 })) - 1;
+    }
+
+    const weight = ctx.session.cart[itemInCart].order + products[id].package;
+    ctx.session.cart[itemInCart].order = +weight.toFixed(2);
+
+    return ctx.editMessageText(`${ products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
+});
+itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
+    const id = ctx.callbackQuery.data.split(':')[1];
+    const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
+    if (itemInCart === -1) return;
+
+    if (ctx.session.cart[itemInCart].order >= products[id].package) {
+        const weight = ctx.session.cart[itemInCart].order - products[id].package;
+        ctx.session.cart[itemInCart].order = +weight.toFixed(2);
+    }
+
+    return ctx.editMessageText(`${ products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`, product_count_keyboard(id));
+});
+
 itemScene.leave();
 
-const countScene = new BaseScene('countScene');
-countScene.enter(ctx => {
-    ctx.session.weight = 0;
-    return ctx.reply(`Укажите в килограммах: ${ ctx.session.weight } кг.`, count_keyboard);
+const returnScene = new BaseScene('returnScene');
+returnScene.enter(async ctx => {
+    const { message_id } = await ctx.reply('Введите вес в граммах.', cancel_keyboard);
+    ctx.scene.state.welcomeMessage = message_id;
 });
-countScene.action('decrease', ctx => {
-    if (!ctx.session.weight) return;
-    ctx.session.weight -= 0.5;
-    ctx.editMessageText(`Укажите в килограммах: ${ ctx.session.weight } кг.`, count_keyboard);
-});
-countScene.action('increase', ctx => {
-    ctx.session.weight += 0.5;
-    ctx.editMessageText(`Укажите в килограммах: ${ ctx.session.weight } кг.`, count_keyboard);
-});
-countScene.action('done', ctx => {
-    if (!ctx.session.weight) {
-        return ctx.reply('Необходимо указать вес!');
-    } else {
-        ctx.scene.state.completed = true;
+returnScene.on('text', ctx => {
+    const id = ctx.scene.state.product;
+    if (!isNaN(parseInt(ctx.message.text))) {
+        ctx.deleteMessage(ctx.message.message_id);
+
+        let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
+
+        if (itemInCart === -1) {
+            itemInCart = (ctx.session.cart.push({ id, name: products[id].name, order: 0, return: 0 })) - 1;
+        }
+
+        ctx.session.cart[itemInCart].return = parseInt(ctx.message.text);
         return ctx.scene.leave();
+    } else {
+        return ctx.reply('Введите число');
     }
 });
+returnScene.action('cancel', ctx => ctx.scene.leave());
+returnScene.leave(ctx => {
+    ctx.deleteMessage(ctx.scene.state.welcomeMessage);
+    setTimeout(() => {
+        return ctx.scene.enter('itemScene');
+    }, 0);
+});
 
-// Выбор количества
-countScene.leave(async (ctx) => {
-    if (!ctx.scene.state.completed) return;
+const confirmScene = new BaseScene('confirmScene');
+confirmScene.enter(ctx => {
+    const notEmptyProduct = (product) => (product.order !== 0 || product.return !== 0);
+    ctx.session.cart = ctx.session.cart.filter(notEmptyProduct);
+
+    let totalString = '<b>В вашем заказе:</b>';
+
+    ctx.session.cart.forEach((product, idx) => {
+        if (product.order || product.return) {
+            totalString += `\n${ idx + 1 }) ${ product.name } - `;
+        }
+        if (product.order) {
+            totalString += `заказ ${ product.order } кг. `;
+        }
+        if (product.order && product.return) {
+            totalString += `/ `;
+        }
+        if (product.return) {
+            totalString += `возврат ${ product.return } г.`;
+        }
+    });
+
+    ctx.scene.state.orderProducts = totalString;
+
+    return ctx.replyWithHTML(totalString, order_confirm_keyboard);
+});
+
+confirmScene.action('back', ctx => {
+    ctx.deleteMessage();
+    return ctx.scene.enter('itemScene');
+});
+confirmScene.action('confirm', ctx => {
+    ctx.deleteMessage();
+    ctx.replyWithHTML(ctx.scene.state.orderProducts);
+    ctx.session.user = ctx.update.callback_query.from.id;
+    return ctx.scene.enter('uploadScene');
+});
+
+const uploadScene = new BaseScene('uploadScene');
+uploadScene.enter(async ctx => {
     const data = {
         user: ctx.session.user,
         store: ctx.session.store,
-        product: ctx.session.product,
-        count: ctx.session.weight
+        product: ctx.session.cart
     };
-    for (const value of Object.values(data)) {
-        if (!value) return;
-    }
     try {
         const res = await axios.post(process.env.BACKEND_HOST + '/api', data);
-        await ctx.reply(`Ваш заказ на организацию ${ ctx.session.store } оформлен.`);
 
         if (res.status === 200) {
-            await ctx.reply(`В заказе: ${ ctx.session.product }, в количестве ${ ctx.session.weight }кг.`, menu_keyboard);
+            await ctx.reply(`Ваш заказ на организацию ${ ctx.session.store } оформлен.`);
         }
     } catch (err) {
         console.log(err.message || err);
-        ctx.reply(`Заказ не оформлен. При оформлении возникла ошибка.`, menu_keyboard);
+        return ctx.reply(`Заказ не оформлен. При оформлении возникла ошибка.`);
     }
     if (ctx.session.companyList.length > 1) {
         ctx.session.companyList.shift();
         setTimeout(() => {
             return ctx.scene.enter('orderScene');
-        }, 1500);
+        }, 1000);
     } else {
         return ctx.reply('Спасибо!');
     }
@@ -141,13 +295,13 @@ newCompanyScene.on('text', async ctx => {
         company: ctx.message.text
     });
     if (res.status === 200) {
-        ctx.reply(`Добавлена организация: "${ ctx.message.text }"`, menu_keyboard);
+        ctx.reply(`Добавлена организация: "${ ctx.message.text }"`);
         return ctx.scene.leave();
     }
-    return ctx.reply('Ошибка при добавлении.', menu_keyboard);
+    return ctx.reply('Ошибка при добавлении.');
 });
 newCompanyScene.action('cancel', ctx => {
-    ctx.reply('Отменено', menu_keyboard);
+    ctx.reply('Отменено');
     return ctx.scene.leave();
 });
 newCompanyScene.leave();
@@ -157,7 +311,7 @@ const settingScene = new BaseScene('settingScene');
 settingScene.enter(async ctx => {
     const res = await axios.get(process.env.BACKEND_HOST + '/api/company/' + ctx.update.message.from.id);
     ctx.session.company = res.data;
-    await ctx.reply(`Вами добавлено ${ res.data.length } ${ textHelper(res.data.length) }`, exit_keyboard);
+    await ctx.reply(`Вами добавлено ${ res.data.length } ${ textHelper(res.data.length) }`);
     if (!res.data.length) {
         return ctx.reply('Выберите действие', new_company_keyboard);
     } else {
@@ -178,30 +332,33 @@ settingScene.action(/^delete:.*/, async ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const res = await axios.delete(process.env.BACKEND_HOST + '/api/company/' + id);
     if (res.status === 200) {
-        ctx.reply('Организация удалена', menu_keyboard);
+        ctx.reply('Организация удалена');
     } else {
-        ctx.reply('Произошла ошибка', menu_keyboard);
+        ctx.reply('Произошла ошибка');
     }
     return ctx.scene.leave();
 });
 
-const stage = new Stage([orderScene, itemScene, countScene, settingScene, newCompanyScene]);
+const stage = new Stage([orderScene, itemScene, confirmScene, returnScene, uploadScene, settingScene, newCompanyScene]);
 stage.hears('Отмена', async ctx => {
-    await ctx.reply('Отменено', menu_keyboard);
+    await ctx.reply('Отменено');
     return ctx.scene.leave();
 });
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 bot.use(session(), stage.middleware());
-bot.command('/start', ctx => ctx.reply('Добро пожаловать', menu_keyboard));
-
-bot.hears('📦 Заказ', async ctx => {
+bot.command('/start', ctx => ctx.reply('Добро пожаловать'));
+bot.command('/order', async ctx => {
     const res = await axios.get(process.env.BACKEND_HOST + '/api/company/' + ctx.update.message.from.id);
     ctx.session.companyList = res.data;
-    return ctx.scene.enter('orderScene', exit_keyboard);
+    return ctx.scene.enter('orderScene');
 });
-bot.hears('‍🔧 Настройки', ctx => ctx.scene.enter('settingScene'));
+bot.command('/settings', ctx => ctx.scene.enter('settingScene'));
+bot.command('/id', ctx => {
+    const userId = ctx.message.from.id;
+    ctx.reply('Ваш идентификатор: ' + userId);
+});
 bot.launch();
 
 function textHelper(count) {

@@ -3,10 +3,9 @@ module.exports = mongoose => {
         "order",
         mongoose.Schema(
             {
-                user: {type: String, required: true},
-                store: {type: String, required: true},
-                product: {type: String, required: true},
-                count: {type: Number, required: true}
+                user: { type: String, required: true },
+                store: { type: String, required: true },
+                product: { type: Array, required: true }
             },
             { timestamps: true }
         )
