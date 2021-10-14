@@ -51,7 +51,8 @@ const product_count_keyboard = (productId) => Markup.inlineKeyboard([
         Markup.button.callback('+', 'increase:' + productId)
     ],
     [
-        Markup.button.callback('✔ ok', 'back')
+        Markup.button.callback('❮❮ Ok', 'back'),
+        Markup.button.callback('Далее ❯❯', 'return:' + productId)
     ]
 ]);
 const company_confirm_keyboard = Markup.inlineKeyboard([
@@ -105,11 +106,8 @@ itemScene.enter(ctx => ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(
 itemScene.action(/choose:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    if (itemInCart === -1) return ctx.editMessageText(products[id].name, product_action_keyboard(id));
-    return ctx.editMessageText(`
-    ${ products[id].name }:
-    Заказ - ${ ctx.session.cart[itemInCart].order } кг.
-    Возврат - ${ ctx.session.cart[itemInCart].return } г.`, product_action_keyboard(id));
+    if (itemInCart === -1) return ctx.editMessageText('Заказ: ' + products[id].name, product_count_keyboard(id));
+    return ctx.editMessageText('Заказ: ' + products[id].name, product_count_keyboard(id));
 });
 itemScene.action('cancel', ctx => {
     ctx.deleteMessage();
@@ -122,7 +120,7 @@ itemScene.action(/order:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
     if (!ctx.session.cart[itemInCart] || !ctx.session.cart[itemInCart].order) {
-        return ctx.editMessageText(products[id].name, product_count_keyboard(id));
+        return ctx.editMessageText('Заказ: ' + products[id].name, product_count_keyboard(id));
     }
     return ctx.editMessageText(`${ products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
 });
@@ -138,10 +136,14 @@ itemScene.action('back', ctx => {
 
 function cartPreviewGenerator(cart) {
     let totalString = 'В вашем заказе:';
+    let index = 0;
 
-    cart.forEach((product, idx) => {
+    cart.forEach(product => {
+        index++;
         if (product.order || product.return) {
-            totalString += `\n${ idx + 1 }) ${ product.name } - `;
+            totalString += `\n${ index }) ${ product.name } - `;
+        } else {
+            index--;
         }
         if (product.order) {
             totalString += `заказ ${ product.order } кг. `;
@@ -184,6 +186,8 @@ itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
     if (ctx.session.cart[itemInCart].order >= products[id].package) {
         const weight = ctx.session.cart[itemInCart].order - products[id].package;
         ctx.session.cart[itemInCart].order = +weight.toFixed(2);
+    } else {
+        return;
     }
 
     return ctx.editMessageText(`${ products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`, product_count_keyboard(id));
@@ -193,7 +197,7 @@ itemScene.leave();
 
 const returnScene = new BaseScene('returnScene');
 returnScene.enter(async ctx => {
-    const { message_id } = await ctx.reply('Введите вес в граммах.', cancel_keyboard);
+    const { message_id } = await ctx.reply('Возврат: введите вес в граммах.', cancel_keyboard);
     ctx.scene.state.welcomeMessage = message_id;
 });
 returnScene.on('text', ctx => {
