@@ -6,7 +6,8 @@ exports.create = async (req, res) => {
     try {
         const order = await new Company({
             company: req.body.company,
-            user: req.body.user
+            user: req.body.user,
+            description: req.body.description
         }).save();
 
         res.send(order);
@@ -17,9 +18,24 @@ exports.create = async (req, res) => {
     }
 };
 
+exports.findById = async (req, res) => {
+    try {
+        const companies = await Company.find({ user: req.params.userId }, {
+            createdAt: 0,
+            updatedAt: 0,
+            __v: 0
+        }).sort({ createdAt: -1 });
+        res.send(companies);
+    } catch (err) {
+        res.status(500).send({
+            message: err.message || "Some error occurred while getting Orders."
+        });
+    }
+};
+
 exports.findAll = async (req, res) => {
     try {
-        const companies = await Company.find({user: req.params.userId}, { createdAt: 0, updatedAt: 0, __v: 0 }).sort({ createdAt: -1 });
+        const companies = await Company.find({}, { createdAt: 0, updatedAt: 0, __v: 0 }).sort({ user: -1 });
         res.send(companies);
     } catch (err) {
         res.status(500).send({

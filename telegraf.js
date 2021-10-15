@@ -3,8 +3,12 @@ const { Telegraf, session, Scenes: { BaseScene, Stage }, Markup } = require('tel
 const products = require('./config/product.config');
 
 const company_keyboard = Markup.inlineKeyboard([
-    Markup.button.callback('Изменить', 'edit'),
-    Markup.button.callback('Добавить', 'add')
+    [
+        Markup.button.callback('Присвоить организацию', 'add')
+    ],
+    [
+        Markup.button.callback('Удалить организацию', 'edit')
+    ]
 ]);
 const new_company_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Добавить', 'add')
@@ -357,17 +361,14 @@ templateScene.leave();
 
 // Добавление компании
 const newCompanyScene = new BaseScene('newCompanyScene');
-newCompanyScene.enter(ctx => ctx.reply('Введите название организации', cancel_keyboard));
+newCompanyScene.enter(async ctx => {
+    const { message_id } = await ctx.reply('Введите название организации', cancel_keyboard);
+    ctx.scene.state.welcomeMessage = message_id;
+});
 newCompanyScene.on('text', async ctx => {
-    const res = await axios.post(process.env.BACKEND_HOST + '/api/company', {
-        user: ctx.update.message.from.id,
-        company: ctx.message.text
-    });
-    if (res.status === 200) {
-        ctx.reply(`Добавлена организация: "${ ctx.message.text }"`);
-        return ctx.scene.leave();
-    }
-    return ctx.reply('Ошибка при добавлении.');
+    ctx.deleteMessage();
+    ctx.deleteMessage(ctx.scene.state.welcomeMessage);
+    return ctx.scene.enter('newCompanyUserIdScene', { company: ctx.message.text });
 });
 newCompanyScene.action('cancel', ctx => {
     ctx.reply('Отменено');
@@ -375,12 +376,61 @@ newCompanyScene.action('cancel', ctx => {
 });
 newCompanyScene.leave();
 
+const newCompanyUserIdScene = new BaseScene('newCompanyUserIdScene');
+newCompanyUserIdScene.enter(async ctx => {
+    const { message_id } = await ctx.reply('Введите идентификатор', cancel_keyboard);
+    ctx.scene.state.welcomeMessage = message_id;
+});
+newCompanyUserIdScene.on('text', ctx => {
+    if (!isNaN(parseInt(ctx.message.text))) {
+        ctx.deleteMessage();
+        ctx.deleteMessage(ctx.scene.state.welcomeMessage);
+        return ctx.scene.enter('newCompanyDescriptionScene', {
+            id: ctx.message.text,
+            company: ctx.scene.state.company
+        });
+    } else {
+        return ctx.reply('Введите число');
+    }
+});
+newCompanyUserIdScene.action('cancel', ctx => {
+    ctx.reply('Отменено');
+    return ctx.scene.leave();
+});
+
+const newCompanyDescriptionScene = new BaseScene('newCompanyDescriptionScene');
+newCompanyDescriptionScene.enter(async ctx => {
+    const { message_id } = await ctx.reply('Кому принадлежит идентификатор', cancel_keyboard);
+    ctx.scene.state.welcomeMessage = message_id;
+});
+newCompanyDescriptionScene.on("text", async ctx => {
+    ctx.deleteMessage();
+    ctx.deleteMessage(ctx.scene.state.welcomeMessage);
+    try {
+        const res = await axios.post(process.env.BACKEND_HOST + '/api/company', {
+            user: ctx.scene.state.id,
+            company: ctx.scene.state.company,
+            description: ctx.message.text
+        });
+        if (res.status === 200) {
+            ctx.reply(`Организация "${ ctx.scene.state.company }" добавлена для пользователя с id ${ ctx.scene.state.id }`);
+            return ctx.scene.leave();
+        }
+    } catch (e) {
+        ctx.reply(e.message || e);
+        return ctx.reply('Ошибка при добавлении.');
+    }
+});
+newCompanyDescriptionScene.action('cancel', ctx => {
+    ctx.reply('Отменено');
+    return ctx.scene.leave();
+});
+
 // Настройки
 const settingScene = new BaseScene('settingScene');
 settingScene.enter(async ctx => {
     const res = await axios.get(process.env.BACKEND_HOST + '/api/company/' + ctx.update.message.from.id);
-    ctx.session.company = res.data;
-    await ctx.reply(`Вами добавлено ${ res.data.length } ${ textHelper(res.data.length) }`);
+    ctx.scene.state.availableCompnaies = res.data;
     if (!res.data.length) {
         return ctx.reply('Выберите действие', new_company_keyboard);
     } else {
@@ -388,8 +438,9 @@ settingScene.enter(async ctx => {
     }
 });
 settingScene.action('edit', ctx => {
-    ctx.session.company.forEach(record => {
-        ctx.reply(record.company, delete_keyboard(record._id));
+    ctx.editMessageText('Выберите действие', cancel_keyboard);
+    ctx.scene.state.availableCompnaies.forEach(record => {
+        ctx.reply(`${ record.company }\n${ record.user }\n${ record.description || '' }`, delete_keyboard(record._id));
     });
 });
 settingScene.action('add', ctx => {
@@ -407,12 +458,12 @@ settingScene.action(/^delete:.*/, async ctx => {
     }
     return ctx.scene.leave();
 });
-
-const stage = new Stage([templateScene, orderScene, itemScene, confirmScene, returnScene, uploadScene, settingScene, newCompanyScene]);
-stage.hears('Отмена', async ctx => {
-    await ctx.reply('Отменено');
+settingScene.action('cancel', ctx => {
+    ctx.reply('Отменено');
     return ctx.scene.leave();
 });
+
+const stage = new Stage([templateScene, orderScene, itemScene, confirmScene, returnScene, uploadScene, settingScene, newCompanyScene, newCompanyUserIdScene, newCompanyDescriptionScene]);
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
@@ -424,22 +475,14 @@ bot.command('/order', async ctx => {
     return ctx.scene.enter('orderScene');
 });
 bot.command('/template', async ctx => ctx.scene.enter('templateScene'));
-bot.command('/settings', ctx => ctx.scene.enter('settingScene'));
+bot.command('/settings', ctx => {
+    const admins = require('./config/admin.config');
+    if (admins.includes(ctx.message.from.id.toString())) {
+        return ctx.scene.enter('settingScene');
+    }
+});
 bot.command('/id', ctx => {
     const userId = ctx.message.from.id;
     ctx.reply('Ваш идентификатор: ' + userId);
 });
 bot.launch();
-
-function textHelper(count) {
-    switch (count) {
-        case 1:
-            return 'организация';
-        case 2:
-        case 3:
-        case 4:
-            return 'организации';
-        default:
-            return 'организаций';
-    }
-}

@@ -3,8 +3,9 @@ module.exports = mongoose => {
         "company",
         mongoose.Schema(
             {
-                company: {type: String, required: true},
-                user: {type: String, required: true},
+                company: { type: String, required: true },
+                user: { type: String, required: true },
+                description: { type: String, required: true }
             },
             { timestamps: true }
         )
