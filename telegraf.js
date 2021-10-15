@@ -1,6 +1,8 @@
+const { google } = require("googleapis");
 const axios = require('axios');
 const { Telegraf, session, Scenes: { BaseScene, Stage }, Markup } = require('telegraf');
-const products = require('./config/product.config');
+const productList = require('./helpers/getProductListFromGSheet');
+const localProducts = require('./config/product.config');
 
 const company_keyboard = Markup.inlineKeyboard([
     [
@@ -15,39 +17,6 @@ const new_company_keyboard = Markup.inlineKeyboard([
 ]);
 const delete_keyboard = (id) => Markup.inlineKeyboard([
     Markup.button.callback('Удалить', 'delete:' + id)
-]);
-const product_keyboard = Markup.inlineKeyboard(
-    products
-        .reduce((acc, item, idx) => {
-            return [...acc, Markup.button.callback(item.name, 'choose:' + idx)];
-        }, [])
-        .reduce((resultArray, item, index) => {
-            const chunkIndex = Math.floor(index / 2);
-
-            if (!resultArray[chunkIndex]) {
-                resultArray[chunkIndex] = []; // start a new chunk
-            }
-
-            resultArray[chunkIndex].push(item);
-
-            if (index === products.length - 1) {
-                resultArray.push([
-                    Markup.button.callback('Отмена', 'cancel'),
-                    Markup.button.callback('Продолжить', 'continue')
-                ]);
-            }
-
-            return resultArray;
-        }, [])
-);
-const product_action_keyboard = (productId) => Markup.inlineKeyboard([
-    [
-        Markup.button.callback('Возврат', 'return:' + productId),
-        Markup.button.callback('Заказ', 'order:' + productId)
-    ],
-    [
-        Markup.button.callback('⇦ Назад', 'back')
-    ]
 ]);
 const product_count_keyboard = (productId) => Markup.inlineKeyboard([
     [
@@ -70,6 +39,33 @@ const order_confirm_keyboard = Markup.inlineKeyboard([
 const cancel_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Отмена', 'cancel')
 ]);
+
+function product_keyboard(products) {
+    return Markup.inlineKeyboard(
+        products
+            .reduce((acc, item, idx) => {
+                return [...acc, Markup.button.callback(item.name, 'choose:' + idx)];
+            }, [])
+            .reduce((resultArray, item, index) => {
+                const chunkIndex = Math.floor(index / 2);
+
+                if (!resultArray[chunkIndex]) {
+                    resultArray[chunkIndex] = []; // start a new chunk
+                }
+
+                resultArray[chunkIndex].push(item);
+
+                if (index === products.length - 1) {
+                    resultArray.push([
+                        Markup.button.callback('Отмена', 'cancel'),
+                        Markup.button.callback('Продолжить', 'continue')
+                    ]);
+                }
+
+                return resultArray;
+            }, [])
+    );
+}
 
 // Оформление заказа
 const orderScene = new BaseScene('orderScene');
@@ -100,18 +96,22 @@ orderScene.action('skip', ctx => {
     }
     return ctx.scene.leave();
 });
-orderScene.leave(ctx => ctx.session.cart = []);
+orderScene.leave(async ctx => ctx.session.cart = []);
 
 // Выбор продукта
 const itemScene = new BaseScene('itemScene');
-itemScene.enter(ctx => ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard));
+itemScene.enter(async ctx => {
+    ctx.session.products = await productList() || localProducts;
+
+    ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard(ctx.session.products));
+});
 
 // Выбор продукта
 itemScene.action(/choose:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    if (itemInCart === -1) return ctx.editMessageText('Заказ: ' + products[id].name, product_count_keyboard(id));
-    return ctx.editMessageText('Заказ: ' + products[id].name, product_count_keyboard(id));
+    if (itemInCart === -1) return ctx.editMessageText('Заказ: ' + ctx.session.products[id].name, product_count_keyboard(id));
+    return ctx.editMessageText('Заказ: ' + ctx.session.products[id].name, product_count_keyboard(id));
 });
 itemScene.action('cancel', ctx => {
     ctx.deleteMessage();
@@ -124,9 +124,9 @@ itemScene.action(/order:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
     if (!ctx.session.cart[itemInCart] || !ctx.session.cart[itemInCart].order) {
-        return ctx.editMessageText('Заказ: ' + products[id].name, product_count_keyboard(id));
+        return ctx.editMessageText('Заказ: ' + ctx.session.products[id].name, product_count_keyboard(id));
     }
-    return ctx.editMessageText(`${ products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
+    return ctx.editMessageText(`${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
 });
 itemScene.action(/return:[0-9]{1,2}/, ctx => {
     ctx.deleteMessage();
@@ -135,7 +135,7 @@ itemScene.action(/return:[0-9]{1,2}/, ctx => {
 });
 
 itemScene.action('back', ctx => {
-    return ctx.editMessageText(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard);
+    return ctx.editMessageText(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard(ctx.session.products));
 });
 
 function cartPreviewGenerator(cart) {
@@ -174,27 +174,27 @@ itemScene.action(/increase:[0-9]{1,2}/, ctx => {
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
     if (itemInCart === -1) {
-        itemInCart = (ctx.session.cart.push({ id, name: products[id].name, order: 0, return: 0 })) - 1;
+        itemInCart = (ctx.session.cart.push({ id, name: ctx.session.products[id].name, order: 0, return: 0 })) - 1;
     }
 
-    const weight = ctx.session.cart[itemInCart].order + products[id].package;
+    const weight = ctx.session.cart[itemInCart].order + ctx.session.products[id].package;
     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
 
-    return ctx.editMessageText(`${ products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
+    return ctx.editMessageText(`${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
 });
 itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
     if (itemInCart === -1) return;
 
-    if (ctx.session.cart[itemInCart].order >= products[id].package) {
-        const weight = ctx.session.cart[itemInCart].order - products[id].package;
+    if (ctx.session.cart[itemInCart].order >= ctx.session.products[id].package) {
+        const weight = ctx.session.cart[itemInCart].order - ctx.session.products[id].package;
         ctx.session.cart[itemInCart].order = +weight.toFixed(2);
     } else {
         return;
     }
 
-    return ctx.editMessageText(`${ products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`, product_count_keyboard(id));
+    return ctx.editMessageText(`${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`, product_count_keyboard(id));
 });
 
 itemScene.leave();
@@ -212,7 +212,7 @@ returnScene.on('text', ctx => {
         let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
         if (itemInCart === -1) {
-            itemInCart = (ctx.session.cart.push({ id, name: products[id].name, order: 0, return: 0 })) - 1;
+            itemInCart = (ctx.session.cart.push({ id, name: ctx.session.products[id].name, order: 0, return: 0 })) - 1;
         }
 
         ctx.session.cart[itemInCart].return = parseInt(ctx.message.text);
@@ -279,6 +279,45 @@ uploadScene.enter(async ctx => {
 
         if (res.status === 200) {
             await ctx.reply(`Ваш заказ на организацию ${ ctx.session.store } оформлен.`);
+
+            const auth = new google.auth.GoogleAuth({
+                keyFile: "keys.json", //the key file
+                scopes: "https://www.googleapis.com/auth/spreadsheets" //url to spreadsheets API
+            });
+
+            //Auth client Object
+            const authClientObject = await auth.getClient();
+
+            //Google sheets instance
+            const googleSheetsInstance = google.sheets({ version: "v4", auth: authClientObject });
+
+            const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
+
+            let renderArray = [];
+            renderArray.push([
+                res.data.user,
+                res.data.store,
+                res.data.product[0].name,
+                res.data.product[0].order,
+                res.data.product[0].return,
+                new Date(res.data.createdAt).toLocaleDateString()
+            ]);
+            if (res.data.product.length > 1) {
+                for (let i = 1; i < res.data.product.length; i++) {
+                    renderArray.push(["", "", res.data.product[i].name, res.data.product[i].order, res.data.product[i].return, ""]);
+                }
+            }
+
+            //write data into the google sheets
+            await googleSheetsInstance.spreadsheets.values.append({
+                auth, //auth object
+                spreadsheetId, //spreadsheet id
+                range: process.env.GOOGLE_ORDER_LIST + "!A:F", //sheet name and range of cells
+                valueInputOption: "USER_ENTERED", // The information will be passed according to what the user passes in as date, number or text
+                resource: {
+                    values: renderArray
+                }
+            });
         }
     } catch (err) {
         console.log(err.message || err);
@@ -297,7 +336,7 @@ uploadScene.enter(async ctx => {
 // Оформление по шаблону
 const templateScene = new BaseScene('templateScene');
 templateScene.enter(async ctx => {
-    const { message_id } = await ctx.reply('Отправьте шаблон. Укажите заказ в кг., а вес в гр.', cancel_keyboard);
+    const { message_id } = await ctx.reply('Отправьте шаблон:\nНазвание организации\nНазвание продукта + заказ в кг. + возврат в гр.', cancel_keyboard);
     ctx.scene.state.welcomeMessage = message_id;
 });
 templateScene.on('text', async ctx => {
@@ -310,7 +349,7 @@ templateScene.on('text', async ctx => {
     ctx.scene.state.store = store;
 
     for (let i = 1; i < templateData.length; i++) {
-        const item = templateData[i].match(/(?<name>[а-яА-Я]*)\s+(?<order>[0-9][\.\,]?[0-9]*)\s+(?<return>[0-9]*)/);
+        const item = templateData[i].match(/(?<name>[а-яёА-Я]*\s?[а-яёА-Я]*\s?[а-яёА-Я]*\s?[а-яёА-Я]*)\s+(?<order>[0-9][\.\,]?[0-9]*)\s+(?<return>[0-9]*)/);
         if (!item) return errorHandler('Товары не распознаны. Пример: Паштет 2 100');
         cart.push(item.groups);
     }

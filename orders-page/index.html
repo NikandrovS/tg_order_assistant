@@ -36,7 +36,8 @@
         ordersFetch();
 
         async function ordersFetch() {
-            const res = await fetch('http://193.168.46.179:3000/api/');
+            // const res = await fetch('http://193.168.46.179:3000/api/');
+            const res = await fetch('http://localhost:3000/api/');
             const orders = await res.json();
 
             if (orders.length) {
