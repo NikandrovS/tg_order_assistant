@@ -2,6 +2,7 @@ const { google } = require("googleapis");
 const axios = require('axios');
 const { Telegraf, session, Scenes: { BaseScene, Stage }, Markup } = require('telegraf');
 const productList = require('./helpers/getProductListFromGSheet');
+const productCells = require('./config/productCells.config');
 const localProducts = require('./config/product.config');
 
 const company_keyboard = Markup.inlineKeyboard([
@@ -294,25 +295,30 @@ uploadScene.enter(async ctx => {
             const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
 
             let renderArray = [];
-            renderArray.push([
-                res.data.user,
-                res.data.store,
-                res.data.product[0].name,
-                res.data.product[0].order,
-                res.data.product[0].return,
-                new Date(res.data.createdAt).toLocaleDateString()
-            ]);
-            if (res.data.product.length > 1) {
-                for (let i = 1; i < res.data.product.length; i++) {
-                    renderArray.push(["", "", res.data.product[i].name, res.data.product[i].order, res.data.product[i].return, ""]);
+
+            // Добавляем строку с пустыми значениями
+            const emptyCells = [];
+            for (let i = 0; i < 26; i++) {
+                if (!i) emptyCells.push(`${ res.data.user }\n${ res.data.store }\n${ new Date(res.data.createdAt).toLocaleDateString() }`);
+                emptyCells.push(0);
+            }
+            // Проходимся по каждому товару, узнаем id ячеек по имени продукта
+            for (let i = 0; i < res.data.product.length; i++) {
+                const productObj = productCells.find(product => product.name === res.data.product[i].name);
+                if (res.data.product[i].order) {
+                    emptyCells[productObj.orderCellId] = res.data.product[i].order;
+                }
+                if (res.data.product[i].return) {
+                    emptyCells[productObj.returnCellId] = res.data.product[i].return;
                 }
             }
+            renderArray.push(emptyCells);
 
             //write data into the google sheets
             await googleSheetsInstance.spreadsheets.values.append({
                 auth, //auth object
                 spreadsheetId, //spreadsheet id
-                range: process.env.GOOGLE_ORDER_LIST + "!A:F", //sheet name and range of cells
+                range: process.env.GOOGLE_ORDER_LIST + "!A:AA", //sheet name and range of cells
                 valueInputOption: "USER_ENTERED", // The information will be passed according to what the user passes in as date, number or text
                 resource: {
                     values: renderArray
