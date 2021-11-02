@@ -1,67 +1,67 @@
 module.exports = [
     {
         name: 'Паштет',
-        orderCellId: 1,
-        returnCellId: 2
+        orderCellId: 2,
+        returnCellId: 3
     },
     {
         name: 'Паштет рулет',
-        orderCellId: 3,
-        returnCellId: 4
+        orderCellId: 4,
+        returnCellId: 5
     },
     {
         name: 'Паштет в масле',
-        orderCellId: 5,
-        returnCellId: 6
+        orderCellId: 6,
+        returnCellId: 7
     },
     {
         name: 'Паштет рулет с черносливом',
-        orderCellId: 7,
-        returnCellId: 8
+        orderCellId: 8,
+        returnCellId: 9
     },
     {
         name: 'Паштет рулет с грибами',
-        orderCellId: 9,
-        returnCellId: 10
+        orderCellId: 10,
+        returnCellId: 11
     },
     {
         name: 'Паштет рулет с курагой',
-        orderCellId: 11,
-        returnCellId: 12
+        orderCellId: 12,
+        returnCellId: 13
     },
     {
         name: 'Рулет с чернослив. и грец.орехом',
-        orderCellId: 13,
-        returnCellId: 14
+        orderCellId: 14,
+        returnCellId: 15
     },
     {
         name: 'Паштет «деревенский»',
-        orderCellId: 15,
-        returnCellId: 16
+        orderCellId: 16,
+        returnCellId: 17
     },
     {
         name: '«Деревенский с грибами»',
-        orderCellId: 17,
-        returnCellId: 18
+        orderCellId: 18,
+        returnCellId: 19
     },
     {
         name: 'Масло Селедочное',
-        orderCellId: 19,
-        returnCellId: 20
+        orderCellId: 20,
+        returnCellId: 21
     },
     {
         name: 'Масло Лососевое',
-        orderCellId: 21,
-        returnCellId: 22
+        orderCellId: 22,
+        returnCellId: 23
     },
     {
         name: 'Студень Домашний',
-        orderCellId: 23,
-        returnCellId: 24
+        orderCellId: 24,
+        returnCellId: 25
     },
     {
         name: 'Студень Говяжий',
-        orderCellId: 25,
-        returnCellId: 26
+        orderCellId: 26,
+        returnCellId: 27
     }
 ];

@@ -299,8 +299,11 @@ uploadScene.enter(async ctx => {
             // Добавляем строку с пустыми значениями
             const emptyCells = [];
             for (let i = 0; i < 26; i++) {
-                if (!i) emptyCells.push(`${ res.data.user }\n${ res.data.store }\n${ new Date(res.data.createdAt).toLocaleDateString() }`);
-                emptyCells.push(0);
+              if (!i) {
+                emptyCells.push(`${res.data.user}\n${res.data.store}`);
+                emptyCells.push(new Date(res.data.createdAt).toLocaleDateString());
+              }
+              emptyCells.push(0);
             }
             // Проходимся по каждому товару, узнаем id ячеек по имени продукта
             for (let i = 0; i < res.data.product.length; i++) {
@@ -318,12 +321,20 @@ uploadScene.enter(async ctx => {
             await googleSheetsInstance.spreadsheets.values.append({
                 auth, //auth object
                 spreadsheetId, //spreadsheet id
-                range: process.env.GOOGLE_ORDER_LIST + "!A:AA", //sheet name and range of cells
+                range: process.env.GOOGLE_ORDER_LIST + "!A:AB", //sheet name and range of cells
                 valueInputOption: "USER_ENTERED", // The information will be passed according to what the user passes in as date, number or text
                 resource: {
                     values: renderArray
                 }
             });
+
+            const reeplyChatId = process.env.REPLY_CHAT_ID;
+            if (reeplyChatId) {
+              ctx.telegram.sendMessage(
+                reeplyChatId,
+                "Оформлен новый заказ. Организация: " + ctx.session.store
+              );
+            }
         }
     } catch (err) {
         console.log(err.message || err);
@@ -529,5 +540,8 @@ bot.command('/settings', ctx => {
 bot.command('/id', ctx => {
     const userId = ctx.message.from.id;
     ctx.reply('Ваш идентификатор: ' + userId);
+});
+bot.command("/groupId", (ctx) => {
+  ctx.reply("Идентификатор группы: " + ctx.message.chat.id);
 });
 bot.launch();
