@@ -50,18 +50,28 @@ module.exports = [
         returnCellId: 21
     },
     {
-        name: 'Масло Лососевое',
+        name: 'Масло Селедочное (шт)',
         orderCellId: 22,
         returnCellId: 23
     },
     {
-        name: 'Студень Домашний',
+        name: 'Масло Лососевое (шт)',
         orderCellId: 24,
         returnCellId: 25
     },
     {
-        name: 'Студень Говяжий',
+        name: 'Масло Лососевое',
         orderCellId: 26,
         returnCellId: 27
+    },
+    {
+        name: 'Студень Домашний',
+        orderCellId: 28,
+        returnCellId: 29
+    },
+    {
+        name: 'Студень Говяжий',
+        orderCellId: 30,
+        returnCellId: 31
     }
 ];

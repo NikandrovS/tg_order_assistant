@@ -2,6 +2,7 @@ const { google } = require("googleapis");
 const axios = require('axios');
 const { Telegraf, session, Scenes: { BaseScene, Stage }, Markup } = require('telegraf');
 const productList = require('./helpers/getProductListFromGSheet');
+const helpers = require('./helpers/index')
 const productCells = require('./config/productCells.config');
 const localProducts = require('./config/product.config');
 
@@ -27,6 +28,15 @@ const product_count_keyboard = (productId) => Markup.inlineKeyboard([
     [
         Markup.button.callback('<< Ok', 'back'),
         Markup.button.callback('Далее >>', 'return:' + productId)
+    ]
+]);
+const return_product_count_keyboard = (productId) => Markup.inlineKeyboard([
+    [
+        Markup.button.callback('-', 'decreasePiece:' + productId),
+        Markup.button.callback('+', 'increasePiece:' + productId)
+    ],
+    [
+        Markup.button.callback('✓ Ok', 'cancel')
     ]
 ]);
 const company_confirm_keyboard = Markup.inlineKeyboard([
@@ -157,7 +167,7 @@ function cartPreviewGenerator(cart) {
             totalString += `/ `;
         }
         if (product.return) {
-            totalString += `возврат ${ product.return } г.`;
+            totalString += `возврат ${ product.return } ${ helpers.measuringType(product.name) }`;
         }
     });
     return totalString;
@@ -181,7 +191,7 @@ itemScene.action(/increase:[0-9]{1,2}/, ctx => {
     const weight = ctx.session.cart[itemInCart].order + ctx.session.products[id].package;
     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
 
-    return ctx.editMessageText(`${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
+    return ctx.editMessageText(`Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
 });
 itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
@@ -195,15 +205,37 @@ itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
         return;
     }
 
-    return ctx.editMessageText(`${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`, product_count_keyboard(id));
+    return ctx.editMessageText(`Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`, product_count_keyboard(id));
 });
 
 itemScene.leave();
 
 const returnScene = new BaseScene('returnScene');
 returnScene.enter(async ctx => {
-    const { message_id } = await ctx.reply('Возврат: введите вес в граммах.', cancel_keyboard);
-    ctx.scene.state.welcomeMessage = message_id;
+    // Проверяем регуляркой наличие тега (шт) в названии товара
+    const id = ctx.scene.state.product
+    const productName = ctx.session.products[id].name
+    const isPieceReturn = productName.match(/\(шт\)/gm);
+    if (isPieceReturn) {
+        const { message_id } = await ctx.reply('Возврат: укажите количество коробочек.', return_product_count_keyboard(id));
+        ctx.scene.state.welcomeMessage = message_id;
+    } else {
+        const { message_id } = await ctx.reply('Возврат: введите вес в граммах.', cancel_keyboard);
+        ctx.scene.state.welcomeMessage = message_id;
+    }
+});
+returnScene.action(/increasePiece:[0-9]{1,2}/, ctx => {
+    const id = ctx.callbackQuery.data.split(':')[1];
+    let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
+
+    if (itemInCart === -1) {
+        itemInCart = (ctx.session.cart.push({ id, name: ctx.session.products[id].name, order: 0, return: 0 })) - 1;
+    }
+
+    const weight = ctx.session.cart[itemInCart].return + ctx.session.products[id].package;
+    ctx.session.cart[itemInCart].return = +weight.toFixed(2);
+
+    return ctx.editMessageText(`Возврат - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].return } кг.`, return_product_count_keyboard(id));
 });
 returnScene.on('text', ctx => {
     const id = ctx.scene.state.product;
@@ -248,7 +280,7 @@ confirmScene.enter(ctx => {
             totalString += `/ `;
         }
         if (product.return) {
-            totalString += `возврат ${ product.return } г.`;
+            totalString += `возврат ${ product.return } ${ helpers.measuringType(product.name) }`;
         }
     });
 
@@ -298,7 +330,7 @@ uploadScene.enter(async ctx => {
 
             // Добавляем строку с пустыми значениями
             const emptyCells = [];
-            for (let i = 0; i < 26; i++) {
+            for (let i = 0; i < 30; i++) {
               if (!i) {
                 emptyCells.push(`${res.data.user}\n${res.data.store}`);
                 emptyCells.push(new Date(res.data.createdAt).toLocaleDateString());
@@ -307,7 +339,7 @@ uploadScene.enter(async ctx => {
             }
             // Проходимся по каждому товару, узнаем id ячеек по имени продукта
             for (let i = 0; i < res.data.product.length; i++) {
-                const productObj = productCells.find(product => product.name === res.data.product[i].name);
+                const productObj = productCells.find(product => product.name.toLowerCase() === res.data.product[i].name.toLowerCase());
                 if (res.data.product[i].order) {
                     emptyCells[productObj.orderCellId] = res.data.product[i].order;
                 }
@@ -321,7 +353,7 @@ uploadScene.enter(async ctx => {
             await googleSheetsInstance.spreadsheets.values.append({
                 auth, //auth object
                 spreadsheetId, //spreadsheet id
-                range: process.env.GOOGLE_ORDER_LIST + "!A:AB", //sheet name and range of cells
+                range: process.env.GOOGLE_ORDER_LIST + "!A:AF", //sheet name and range of cells
                 valueInputOption: "USER_ENTERED", // The information will be passed according to what the user passes in as date, number or text
                 resource: {
                     values: renderArray
@@ -384,7 +416,7 @@ templateScene.on('text', async ctx => {
             totalString += `/ `;
         }
         if (product.return) {
-            totalString += `возврат ${ product.return } г.`;
+            totalString += `возврат ${ product.return } ${ helpers.measuringType(product.name) }`;
         }
     });
 
@@ -530,7 +562,8 @@ bot.command('/order', async ctx => {
     ctx.session.companyList = res.data;
     return ctx.scene.enter('orderScene');
 });
-bot.command('/template', async ctx => ctx.scene.enter('templateScene'));
+bot.command('/template', async ctx => ctx.reply('Раздел находится в доработке.'));
+// bot.command('/template', async ctx => ctx.scene.enter('templateScene'));
 bot.command('/settings', ctx => {
     const admins = require('./config/admin.config');
     if (admins.includes(ctx.message.from.id.toString())) {
