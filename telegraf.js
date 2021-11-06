@@ -691,7 +691,7 @@ bot.command('/id', ctx => {
     const userId = ctx.message.from.id;
     ctx.reply('Ваш идентификатор: ' + userId);
 });
-bot.command("/groupId", (ctx) => {
+bot.command("/groupid", (ctx) => {
   ctx.reply("Идентификатор группы: " + ctx.message.chat.id);
 });
 bot.launch();
