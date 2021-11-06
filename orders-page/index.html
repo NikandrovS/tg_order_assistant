@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main>
+    <header>
+        <h2>Доступные заказы</h2>
+        <button id="report-button">обновить</button>
+        <!--        <a href="http://193.168.46.179:3000/api/download">Скачать таблицу</a>-->
+    </header>
+    <table>
+        <thead>
+        <tr>
+            <th>Клиент</th>
+            <th>Организация</th>
+            <th>Продукт</th>
+            <th>Заказ, кг.</th>
+            <th>Возврат, г.</th>
+            <th>Дата заказа</th>
+        </tr>
+        </thead>
+        <tbody id="table-body">
+        <tr>
+            <td colspan="6">Заказов еще нет</td>
+        </tr>
+        </tbody>
+    </table>
+</main>
+<script>
+    window.onload = function () {
+        ordersFetch();
+
+        async function ordersFetch() {
+            // const res = await fetch('http://193.168.46.179:3000/api/');
+            const res = await fetch('http://localhost:3000/api/');
+            const orders = await res.json();
+
+            if (orders.length) {
+                const table = document.getElementById('table-body');
+                table.innerHTML = '';
+
+                for (const order of orders) {
+                    const tr = document.createElement('tr');
+                    table.append(tr);
+
+                    for (const [key, value] of Object.entries(order)) {
+                        if (key === 'createdAt') {
+                            const td = document.createElement('td');
+                            td.setAttribute("rowspan", Object.entries(order)[2][1].length);
+                            td.innerText = new Date(value).toLocaleDateString();
+                            tr.append(td);
+                            continue;
+                        }
+                        if (key === 'product') {
+                            for (const [index, product] of value.entries()) {
+                                if (!index) {
+                                    const tdName = document.createElement('td');
+                                    tdName.innerText = product.name;
+                                    tr.append(tdName);
+
+                                    const tdOrder = document.createElement('td');
+                                    tdOrder.innerText = product.order;
+                                    tr.append(tdOrder);
+
+                                    const tdReturn = document.createElement('td');
+                                    tdReturn.innerText = product.return;
+                                    tr.append(tdReturn);
+                                } else {
+                                    const productRow = document.createElement('tr');
+                                    table.append(productRow);
+
+                                    const tdName = document.createElement('td');
+                                    tdName.innerText = product.name;
+                                    productRow.append(tdName);
+
+                                    const tdOrder = document.createElement('td');
+                                    tdOrder.innerText = product.order;
+                                    productRow.append(tdOrder);
+
+                                    const tdReturn = document.createElement('td');
+                                    tdReturn.innerText = product.return;
+                                    productRow.append(tdReturn);
+                                }
+                            }
+                            continue;
+                        }
+                        const td = document.createElement('td');
+                        td.setAttribute("rowspan", Object.entries(order)[2][1].length);
+                        td.innerText = value;
+                        tr.append(td);
+                    }
+                }
+            }
+        }
+
+        const btn = document.getElementById('report-button');
+        btn.addEventListener('click', () => {
+            ordersFetch();
+        });
+    };
+</script>
+</body>
+</html>

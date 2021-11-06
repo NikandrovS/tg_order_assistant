@@ -16,8 +16,11 @@ module.exports = app => {
     // Create a new company
     router.post("/company", company.create);
 
+    // Get all companies
+    router.get("/company/all", company.findAll);
+
     // Get user companies
-    router.get("/company/:userId", company.findAll);
+    router.get("/company/:userId", company.findById);
 
     // Delete company
     router.delete("/company/:id", company.delete);

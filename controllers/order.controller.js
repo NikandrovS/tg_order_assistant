@@ -7,8 +7,7 @@ exports.create = async (req, res) => {
         const order = await new Order({
             user: req.body.user,
             store: req.body.store,
-            product: req.body.product,
-            count: req.body.count
+            product: req.body.product
         }).save();
 
         res.send(order);

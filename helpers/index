@@ -1,0 +1,60 @@
+const { google } = require("googleapis");
+
+const helpers = {};
+
+helpers.measuringType = (name) => (name.match(/\(шт\)/gm) ? "кг." : "г.");
+
+helpers.arrayValuesToNumber = (array) =>
+  array.map((value) => parseFloat(value.replace(",", ".")));
+
+helpers.getStockBalance = async function (string = "total") {
+  const range = string === "total" ? "!B18:P18" : "!B15:P15";
+  const auth = new google.auth.GoogleAuth({
+    keyFile: "keys.json",
+    scopes: "https://www.googleapis.com/auth/spreadsheets",
+  });
+
+  const authClientObject = await auth.getClient();
+  const googleSheetsInstance = google.sheets({
+    version: "v4",
+    auth: authClientObject,
+  });
+  const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
+
+  const readData = await googleSheetsInstance.spreadsheets.values.get({
+    auth,
+    spreadsheetId,
+    range: "Склад" + range,
+  });
+
+  if (readData.data.values) {
+    return readData.data.values;
+  }
+};
+
+helpers.setStockBalance = async function (array) {
+  const auth = new google.auth.GoogleAuth({
+    keyFile: "keys.json",
+    scopes: "https://www.googleapis.com/auth/spreadsheets",
+  });
+
+  const authClientObject = await auth.getClient();
+  const googleSheetsInstance = google.sheets({
+    version: "v4",
+    auth: authClientObject,
+  });
+  const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
+
+  let renderArray = [array];
+  await googleSheetsInstance.spreadsheets.values.update({
+    auth,
+    spreadsheetId,
+    range: "Склад" + "!B15:P15",
+    valueInputOption: "USER_ENTERED",
+    resource: {
+      values: renderArray,
+    },
+  });
+};
+
+module.exports = helpers;
