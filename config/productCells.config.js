@@ -65,12 +65,12 @@ module.exports = [
         returnCellId: 27
     },
     {
-        name: 'Студень Домашний',
+        name: 'Студень Домашний (шт)',
         orderCellId: 28,
         returnCellId: 29
     },
     {
-        name: 'Студень Говяжий',
+        name: 'Студень Говяжий (шт)',
         orderCellId: 30,
         returnCellId: 31
     }
