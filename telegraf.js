@@ -8,14 +8,36 @@ const localProducts = require('./config/product.config');
 
 const company_keyboard = Markup.inlineKeyboard([
     [
-        Markup.button.callback('Присвоить организацию', 'add')
+        Markup.button.callback('Присвоить организацию', 'add'),
+        Markup.button.callback('Удалить организацию', 'edit')
     ],
     [
-        Markup.button.callback('Удалить организацию', 'edit')
+        Markup.button.callback('Сравнение с остатками', 'stockBalance')
     ]
 ]);
 const new_company_keyboard = Markup.inlineKeyboard([
-    Markup.button.callback('Добавить', 'add')
+    [
+        Markup.button.callback('Добавить', 'add')
+    ],
+    [
+        Markup.button.callback('Сравнение с остатками', 'stockBalance')
+    ]
+]);
+const turn_on_keyboard = Markup.inlineKeyboard([
+    [
+        Markup.button.callback('Включить', 'turnOnStockBalance')
+    ],
+    [
+        Markup.button.callback('Отмена', 'cancel')
+    ]
+]);
+const turn_off_keyboard = Markup.inlineKeyboard([
+    [
+        Markup.button.callback('Выключить', 'turnOffStockBalance')
+    ],
+    [
+        Markup.button.callback('Отмена', 'cancel')
+    ]
 ]);
 const delete_keyboard = (id) => Markup.inlineKeyboard([
     Markup.button.callback('Удалить', 'delete:' + id)
@@ -114,6 +136,15 @@ const itemScene = new BaseScene('itemScene');
 itemScene.enter(async ctx => {
     ctx.session.products = await productList() || localProducts;
 
+    if (ctx.session.stockBalance) {
+        // Получаем баланс доступных остатков
+        const [res] = await helpers.getStockBalance()
+        // Приводим к числовым значениям
+        const stockBalance = helpers.arrayValuesToNumber(res)
+        // Присваиваем значения к объекту продуктов
+        ctx.session.products.forEach((value, index) => value.maxWeigth = stockBalance[index])
+    }
+
     ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard(ctx.session.products));
 });
 
@@ -121,8 +152,14 @@ itemScene.enter(async ctx => {
 itemScene.action(/choose:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    if (itemInCart === -1) return ctx.editMessageText('Заказ: ' + ctx.session.products[id].name, product_count_keyboard(id));
-    return ctx.editMessageText('Заказ: ' + ctx.session.products[id].name, product_count_keyboard(id));
+    let text = ""
+    if (ctx.session.stockBalance) {
+        text = `Заказ: ${ctx.session.products[id].name}\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
+    } else {
+        text = `Заказ: ${ctx.session.products[id].name}`
+    }
+    if (itemInCart === -1) return ctx.editMessageText(text, product_count_keyboard(id));
+    return ctx.editMessageText(text, product_count_keyboard(id));
 });
 itemScene.action('cancel', ctx => {
     ctx.deleteMessage();
@@ -180,7 +217,7 @@ itemScene.action('continue', ctx => {
 });
 
 // Действие с весом
-itemScene.action(/increase:[0-9]{1,2}/, ctx => {
+itemScene.action(/increase:[0-9]{1,2}/, async ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
@@ -189,9 +226,22 @@ itemScene.action(/increase:[0-9]{1,2}/, ctx => {
     }
 
     const weight = ctx.session.cart[itemInCart].order + ctx.session.products[id].package;
+    if (ctx.session.stockBalance) {
+        if (weight > ctx.session.products[id].maxWeigth) {
+            const { message_id } = await ctx.reply('Такого количества нет в наличии! ' + +weight.toFixed(2) + 'кг.')
+            setTimeout(() => {
+                ctx.deleteMessage(message_id);
+            }, 1500);
+            return
+        }
+    } 
+
     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
 
-    return ctx.editMessageText(`Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
+    let text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`
+    if (ctx.session.stockBalance) text += `\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
+
+    return ctx.editMessageText(text, product_count_keyboard(id));
 });
 itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
@@ -205,7 +255,10 @@ itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
         return;
     }
 
-    return ctx.editMessageText(`Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`, product_count_keyboard(id));
+    let text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`
+    if (ctx.session.stockBalance) text += `\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
+
+    return ctx.editMessageText(text, product_count_keyboard(id));
 });
 
 itemScene.leave();
@@ -217,7 +270,7 @@ returnScene.enter(async ctx => {
     const productName = ctx.session.products[id].name
     const isPieceReturn = productName.match(/\(шт\)/gm);
     if (isPieceReturn) {
-        const { message_id } = await ctx.reply('Возврат: укажите количество коробочек.', return_product_count_keyboard(id));
+        const { message_id } = await ctx.reply('Возврат: укажите количество упаковок.', return_product_count_keyboard(id));
         ctx.scene.state.welcomeMessage = message_id;
     } else {
         const { message_id } = await ctx.reply('Возврат: введите вес в граммах.', cancel_keyboard);
@@ -233,6 +286,35 @@ returnScene.action(/increasePiece:[0-9]{1,2}/, ctx => {
     }
 
     const weight = ctx.session.cart[itemInCart].return + ctx.session.products[id].package;
+    ctx.session.cart[itemInCart].return = +weight.toFixed(2);
+
+    return ctx.editMessageText(`Возврат - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].return } кг.`, return_product_count_keyboard(id));
+});
+returnScene.action(/decreasePiece:[0-9]{1,2}/, ctx => {
+    // const id = ctx.callbackQuery.data.split(':')[1];
+    // const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
+    // if (itemInCart === -1) return;
+
+    // if (ctx.session.cart[itemInCart].order >= ctx.session.products[id].package) {
+    //     const weight = ctx.session.cart[itemInCart].order - ctx.session.products[id].package;
+    //     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
+    // } else {
+    //     return;
+    // }
+
+    // let text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`
+    // if (ctx.session.stockBalance) text += `\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
+
+    // return ctx.editMessageText(text, product_count_keyboard(id));
+
+
+
+    const id = ctx.callbackQuery.data.split(':')[1];
+    let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
+
+    if (itemInCart === -1 || !ctx.session.cart[itemInCart].return) return
+
+    const weight = ctx.session.cart[itemInCart].return - ctx.session.products[id].package;
     ctx.session.cart[itemInCart].return = +weight.toFixed(2);
 
     return ctx.editMessageText(`Возврат - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].return } кг.`, return_product_count_keyboard(id));
@@ -367,6 +449,20 @@ uploadScene.enter(async ctx => {
                 "Оформлен новый заказ. Организация: " + ctx.session.store
               );
             }
+            
+            // Удаляем айди, дату и оставшиеся четные значения возвратов
+            const orderTotal = emptyCells.slice(2).filter((e,i)=>!(i%2));
+            // Получаем текущее значение склада
+            let [stockBalance] = await helpers.getStockBalance(true);
+            // Заменяем запятые и приводим значения к числу
+            stockBalance = helpers.arrayValuesToNumber(stockBalance)
+            // Суммируем оба массива
+            for (let i = 0; i < stockBalance.length; i++) {
+                stockBalance[i] += orderTotal[i];
+            }
+            // Записываем новые значения
+            await helpers.setStockBalance(stockBalance)
+
         }
     } catch (err) {
         console.log(err.message || err);
@@ -536,6 +632,13 @@ settingScene.action('add', ctx => {
     ctx.scene.leave();
     return ctx.scene.enter('newCompanyScene');
 });
+settingScene.action('stockBalance', ctx => {
+    ctx.session.stockBalance = ctx.session.stockBalance ?? (ctx.session.stockBalance = true)
+    if (ctx.session.stockBalance) {
+        return ctx.editMessageText('Выключить сравнение с остатками', turn_off_keyboard);
+    }
+    return ctx.editMessageText('Включить сравнение с остатками', turn_on_keyboard);
+});
 settingScene.action(/^delete:.*/, async ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const res = await axios.delete(process.env.BACKEND_HOST + '/api/company/' + id);
@@ -544,6 +647,18 @@ settingScene.action(/^delete:.*/, async ctx => {
     } else {
         ctx.reply('Произошла ошибка');
     }
+    return ctx.scene.leave();
+});
+settingScene.action('turnOnStockBalance', ctx => {
+    ctx.deleteMessage();
+    ctx.reply('Сравнение с остатками включено');
+    ctx.session.stockBalance = true
+    return ctx.scene.leave();
+});
+settingScene.action('turnOffStockBalance', ctx => {
+    ctx.deleteMessage();
+    ctx.reply('Сравнение с остатками выключено');
+    ctx.session.stockBalance = false
     return ctx.scene.leave();
 });
 settingScene.action('cancel', ctx => {
@@ -560,6 +675,8 @@ bot.command('/start', ctx => ctx.reply('Добро пожаловать'));
 bot.command('/order', async ctx => {
     const res = await axios.get(process.env.BACKEND_HOST + '/api/company/' + ctx.update.message.from.id);
     ctx.session.companyList = res.data;
+    ctx.session.stockBalance = ctx.session.stockBalance ?? (ctx.session.stockBalance = true)
+
     return ctx.scene.enter('orderScene');
 });
 bot.command('/template', async ctx => ctx.reply('Раздел находится в доработке.'));
