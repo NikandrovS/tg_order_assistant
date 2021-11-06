@@ -25,8 +25,8 @@ const product_count_keyboard = (productId) => Markup.inlineKeyboard([
         Markup.button.callback('+', 'increase:' + productId)
     ],
     [
-        Markup.button.callback('❮❮ Ok', 'back'),
-        Markup.button.callback('Далее ❯❯', 'return:' + productId)
+        Markup.button.callback('<< Ok', 'back'),
+        Markup.button.callback('Далее >>', 'return:' + productId)
     ]
 ]);
 const company_confirm_keyboard = Markup.inlineKeyboard([
