@@ -8,7 +8,7 @@ helpers.arrayValuesToNumber = (array) =>
   array.map((value) => parseFloat(value.replace(",", ".")));
 
 helpers.getStockBalance = async function (string = "total") {
-  const range = string === "total" ? "!B18:P18" : "!B15:P15";
+  const range = string === "total" ? process.env.TOTAL_STOCK_REMAINS_CELLS : process.env.TOTAL_STOCK_ORDERED_CELLS;
   const auth = new google.auth.GoogleAuth({
     keyFile: "keys.json",
     scopes: "https://www.googleapis.com/auth/spreadsheets",
@@ -49,7 +49,7 @@ helpers.setStockBalance = async function (array) {
   await googleSheetsInstance.spreadsheets.values.update({
     auth,
     spreadsheetId,
-    range: "Склад" + "!B15:P15",
+    range: "Склад" + process.env.TOTAL_STOCK_ORDERED_CELLS,
     valueInputOption: "USER_ENTERED",
     resource: {
       values: renderArray,
