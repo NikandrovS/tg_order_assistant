@@ -450,18 +450,20 @@ uploadScene.enter(async ctx => {
               );
             }
             
-            // Удаляем айди, дату и оставшиеся четные значения возвратов
-            const orderTotal = emptyCells.slice(2).filter((e,i)=>!(i%2));
-            // Получаем текущее значение склада
-            let [stockBalance] = await helpers.getStockBalance(true);
-            // Заменяем запятые и приводим значения к числу
-            stockBalance = helpers.arrayValuesToNumber(stockBalance)
-            // Суммируем оба массива
-            for (let i = 0; i < stockBalance.length; i++) {
-                stockBalance[i] += orderTotal[i];
+            if (ctx.session.stockBalance) {
+                // Удаляем айди, дату и оставшиеся четные значения возвратов
+                const orderTotal = emptyCells.slice(2).filter((e,i)=>!(i%2));
+                // Получаем текущее значение склада
+                let [stockBalance] = await helpers.getStockBalance(true);
+                // Заменяем запятые и приводим значения к числу
+                stockBalance = helpers.arrayValuesToNumber(stockBalance)
+                // Суммируем оба массива
+                for (let i = 0; i < stockBalance.length; i++) {
+                    stockBalance[i] += orderTotal[i];
+                }
+                // Записываем новые значения
+                await helpers.setStockBalance(stockBalance)
             }
-            // Записываем новые значения
-            await helpers.setStockBalance(stockBalance)
 
         }
     } catch (err) {
