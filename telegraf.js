@@ -1,7 +1,6 @@
 const { google } = require("googleapis");
 const axios = require('axios');
 const { Telegraf, session, Scenes: { BaseScene, Stage }, Markup } = require('telegraf');
-const productList = require('./helpers/getProductListFromGSheet');
 const helpers = require('./helpers/index')
 const productCells = require('./config/productCells.config');
 const localProducts = require('./config/product.config');
@@ -77,7 +76,7 @@ function product_keyboard(products) {
     return Markup.inlineKeyboard(
         products
             .reduce((acc, item, idx) => {
-                return item.stockRemains > item.package ? [...acc, Markup.button.callback(item.name, 'choose:' + idx)] : acc;
+                return item.stockRemains >= item.package ? [...acc, Markup.button.callback(item.name, 'choose:' + idx)] : acc;
             }, [])
             .reduce((resultArray, item, index, array) => {
                 const chunkIndex = Math.floor(index / 2);
@@ -135,15 +134,6 @@ orderScene.leave(async ctx => ctx.session.cart = []);
 const itemScene = new BaseScene('itemScene');
 itemScene.enter(async ctx => {
     ctx.session.products = await helpers.getProductList() || localProducts;
-    
-    if (ctx.session.stockBalance) {
-        // Получаем баланс доступных остатков
-        const [res] = await helpers.getStockBalance()
-        // Приводим к числовым значениям
-        const stockBalance = helpers.arrayValuesToNumber(res)
-        // Присваиваем значения к объекту продуктов
-        ctx.session.products.forEach((value, index) => value.maxWeigth = stockBalance[index])
-    }
 
     ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard(ctx.session.products));
 });
@@ -221,14 +211,12 @@ itemScene.action(/increase:[0-9]{1,2}/, async ctx => {
     }
 
     const weight = ctx.session.cart[itemInCart].order + ctx.session.products[id].package;
-    if (ctx.session.stockBalance) {
-        if (weight > ctx.session.products[id].maxWeigth) {
-            const { message_id } = await ctx.reply('Такого количества нет в наличии! ' + +weight.toFixed(2) + 'кг.')
-            setTimeout(() => {
-                ctx.deleteMessage(message_id);
-            }, 1500);
-            return
-        }
+    if (ctx.session.stockBalance && weight > ctx.session.products[id].stockRemains) {
+        const { message_id } = await ctx.reply('Такого количества нет в наличии! ' + +weight.toFixed(2) + 'кг.')
+        setTimeout(() => {
+            ctx.deleteMessage(message_id);
+        }, 1500);
+        return
     } 
 
     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
