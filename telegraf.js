@@ -152,12 +152,7 @@ itemScene.enter(async ctx => {
 itemScene.action(/choose:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    let text = ""
-    if (ctx.session.stockBalance) {
-        text = `Заказ: ${ctx.session.products[id].name}\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
-    } else {
-        text = `Заказ: ${ctx.session.products[id].name}`
-    }
+    const text = `Заказ: ${ctx.session.products[id].name}`;
     if (itemInCart === -1) return ctx.editMessageText(text, product_count_keyboard(id));
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
@@ -238,8 +233,7 @@ itemScene.action(/increase:[0-9]{1,2}/, async ctx => {
 
     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
 
-    let text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`
-    if (ctx.session.stockBalance) text += `\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
+    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`
 
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
@@ -255,8 +249,7 @@ itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
         return;
     }
 
-    let text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`
-    if (ctx.session.stockBalance) text += `\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
+    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`;
 
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
@@ -291,24 +284,6 @@ returnScene.action(/increasePiece:[0-9]{1,2}/, ctx => {
     return ctx.editMessageText(`Возврат - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].return } кг.`, return_product_count_keyboard(id));
 });
 returnScene.action(/decreasePiece:[0-9]{1,2}/, ctx => {
-    // const id = ctx.callbackQuery.data.split(':')[1];
-    // const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    // if (itemInCart === -1) return;
-
-    // if (ctx.session.cart[itemInCart].order >= ctx.session.products[id].package) {
-    //     const weight = ctx.session.cart[itemInCart].order - ctx.session.products[id].package;
-    //     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
-    // } else {
-    //     return;
-    // }
-
-    // let text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`
-    // if (ctx.session.stockBalance) text += `\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
-
-    // return ctx.editMessageText(text, product_count_keyboard(id));
-
-
-
     const id = ctx.callbackQuery.data.split(':')[1];
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
