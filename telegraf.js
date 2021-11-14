@@ -77,9 +77,9 @@ function product_keyboard(products) {
     return Markup.inlineKeyboard(
         products
             .reduce((acc, item, idx) => {
-                return [...acc, Markup.button.callback(item.name, 'choose:' + idx)];
+                return item.stockRemains > item.package ? [...acc, Markup.button.callback(item.name, 'choose:' + idx)] : acc;
             }, [])
-            .reduce((resultArray, item, index) => {
+            .reduce((resultArray, item, index, array) => {
                 const chunkIndex = Math.floor(index / 2);
 
                 if (!resultArray[chunkIndex]) {
@@ -88,7 +88,7 @@ function product_keyboard(products) {
 
                 resultArray[chunkIndex].push(item);
 
-                if (index === products.length - 1) {
+                if (index === array.length - 1) {
                     resultArray.push([
                         Markup.button.callback('Отмена', 'cancel'),
                         Markup.button.callback('Продолжить', 'continue')
@@ -134,8 +134,8 @@ orderScene.leave(async ctx => ctx.session.cart = []);
 // Выбор продукта
 const itemScene = new BaseScene('itemScene');
 itemScene.enter(async ctx => {
-    ctx.session.products = await productList() || localProducts;
-
+    ctx.session.products = await helpers.getProductList() || localProducts;
+    
     if (ctx.session.stockBalance) {
         // Получаем баланс доступных остатков
         const [res] = await helpers.getStockBalance()
