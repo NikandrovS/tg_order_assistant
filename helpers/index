@@ -24,9 +24,7 @@ helpers.getProductList = async function () {
   });
 
   if (readData.data.values) {
-    let [stockRemains] = await this.getStockBalance();
-    stockRemains = this.arrayValuesToNumber(stockRemains);
-
+    const stockRemains = await this.getStockBalance();
     const [products, package] = readData.data.values;
     return products.reduce((acc, value, idx) => [
         ...acc,
@@ -61,7 +59,8 @@ helpers.getStockBalance = async function (string = "total") {
   });
 
   if (readData.data.values) {
-    return readData.data.values;
+    const [values] = readData.data.values
+    return this.arrayValuesToNumber(values);
   }
 };
 

@@ -417,9 +417,7 @@ uploadScene.enter(async ctx => {
                 // Удаляем айди, дату и оставшиеся четные значения возвратов
                 const orderTotal = emptyCells.slice(2).filter((e,i)=>!(i%2));
                 // Получаем текущее значение склада
-                let [stockBalance] = await helpers.getStockBalance(true);
-                // Заменяем запятые и приводим значения к числу
-                stockBalance = helpers.arrayValuesToNumber(stockBalance)
+                const stockBalance = await helpers.getStockBalance(true);
                 // Суммируем оба массива
                 for (let i = 0; i < stockBalance.length; i++) {
                     stockBalance[i] += orderTotal[i];
