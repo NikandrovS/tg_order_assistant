@@ -338,8 +338,34 @@ confirmScene.action('back', ctx => {
     ctx.deleteMessage();
     return ctx.scene.enter('itemScene');
 });
-confirmScene.action('confirm', ctx => {
+confirmScene.action('confirm', async ctx => {
     ctx.deleteMessage();
+
+    if (ctx.session.stockBalance) {
+      // Получаем текущее значение склада
+      const stockBalance = await helpers.getStockBalance();
+      const unAvailableProducts = [];
+
+      ctx.session.cart.forEach((product) => {
+        if (stockBalance[product.id] < product.order) {
+          unAvailableProducts.push(product);
+        }
+      });
+
+      if (unAvailableProducts.length) {
+        let text = "Наличие изменилось для следующих товаров:";
+        unAvailableProducts.forEach((product) => {
+          text += `\n${product.name}`;
+          ctx.session.cart = ctx.session.cart.filter(
+            (item) => item.id !== product.id
+          );
+        });
+
+        ctx.reply(text);
+        return ctx.scene.enter("itemScene");
+      }
+    }
+    
     ctx.replyWithHTML(ctx.scene.state.orderProducts);
     ctx.session.user = ctx.update.callback_query.from.id;
     return ctx.scene.enter('uploadScene');
