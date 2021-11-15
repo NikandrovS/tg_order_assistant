@@ -47,7 +47,7 @@ const product_count_keyboard = (productId) => Markup.inlineKeyboard([
         Markup.button.callback('+', 'increase:' + productId)
     ],
     [
-        Markup.button.callback('<< Ok', 'back'),
+        Markup.button.callback('<< В меню', 'back'),
         Markup.button.callback('Далее >>', 'return:' + productId)
     ]
 ]);
@@ -76,7 +76,8 @@ function product_keyboard(products) {
     return Markup.inlineKeyboard(
         products
             .reduce((acc, item, idx) => {
-                return item.stockRemains >= item.package ? [...acc, Markup.button.callback(item.name, 'choose:' + idx)] : acc;
+                const isAvailable = item.stockRemains >= item.package;
+                return [...acc, Markup.button.callback(isAvailable ? item.name : item.name + ' ❌', isAvailable ? 'choose:' + idx : 'return:' + idx)];
             }, [])
             .reduce((resultArray, item, index, array) => {
                 const chunkIndex = Math.floor(index / 2);
