@@ -1,7 +1,6 @@
 const { google } = require("googleapis");
 const axios = require('axios');
 const { Telegraf, session, Scenes: { BaseScene, Stage }, Markup } = require('telegraf');
-const productList = require('./helpers/getProductListFromGSheet');
 const helpers = require('./helpers/index')
 const productCells = require('./config/productCells.config');
 const localProducts = require('./config/product.config');
@@ -77,9 +76,9 @@ function product_keyboard(products) {
     return Markup.inlineKeyboard(
         products
             .reduce((acc, item, idx) => {
-                return [...acc, Markup.button.callback(item.name, 'choose:' + idx)];
+                return item.stockRemains >= item.package ? [...acc, Markup.button.callback(item.name, 'choose:' + idx)] : acc;
             }, [])
-            .reduce((resultArray, item, index) => {
+            .reduce((resultArray, item, index, array) => {
                 const chunkIndex = Math.floor(index / 2);
 
                 if (!resultArray[chunkIndex]) {
@@ -88,7 +87,7 @@ function product_keyboard(products) {
 
                 resultArray[chunkIndex].push(item);
 
-                if (index === products.length - 1) {
+                if (index === array.length - 1) {
                     resultArray.push([
                         Markup.button.callback('Отмена', 'cancel'),
                         Markup.button.callback('Продолжить', 'continue')
@@ -134,16 +133,7 @@ orderScene.leave(async ctx => ctx.session.cart = []);
 // Выбор продукта
 const itemScene = new BaseScene('itemScene');
 itemScene.enter(async ctx => {
-    ctx.session.products = await productList() || localProducts;
-
-    if (ctx.session.stockBalance) {
-        // Получаем баланс доступных остатков
-        const [res] = await helpers.getStockBalance()
-        // Приводим к числовым значениям
-        const stockBalance = helpers.arrayValuesToNumber(res)
-        // Присваиваем значения к объекту продуктов
-        ctx.session.products.forEach((value, index) => value.maxWeigth = stockBalance[index])
-    }
+    ctx.session.products = await helpers.getProductList() || localProducts;
 
     ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard(ctx.session.products));
 });
@@ -152,12 +142,7 @@ itemScene.enter(async ctx => {
 itemScene.action(/choose:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    let text = ""
-    if (ctx.session.stockBalance) {
-        text = `Заказ: ${ctx.session.products[id].name}\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
-    } else {
-        text = `Заказ: ${ctx.session.products[id].name}`
-    }
+    const text = `Заказ: ${ctx.session.products[id].name}`;
     if (itemInCart === -1) return ctx.editMessageText(text, product_count_keyboard(id));
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
@@ -226,20 +211,17 @@ itemScene.action(/increase:[0-9]{1,2}/, async ctx => {
     }
 
     const weight = ctx.session.cart[itemInCart].order + ctx.session.products[id].package;
-    if (ctx.session.stockBalance) {
-        if (weight > ctx.session.products[id].maxWeigth) {
-            const { message_id } = await ctx.reply('Такого количества нет в наличии! ' + +weight.toFixed(2) + 'кг.')
-            setTimeout(() => {
-                ctx.deleteMessage(message_id);
-            }, 1500);
-            return
-        }
+    if (ctx.session.stockBalance && weight > ctx.session.products[id].stockRemains) {
+        const { message_id } = await ctx.reply('Такого количества нет в наличии! ' + +weight.toFixed(2) + 'кг.')
+        setTimeout(() => {
+            ctx.deleteMessage(message_id);
+        }, 1500);
+        return
     } 
 
     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
 
-    let text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`
-    if (ctx.session.stockBalance) text += `\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
+    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`
 
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
@@ -255,8 +237,7 @@ itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
         return;
     }
 
-    let text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`
-    if (ctx.session.stockBalance) text += `\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
+    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`;
 
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
@@ -291,24 +272,6 @@ returnScene.action(/increasePiece:[0-9]{1,2}/, ctx => {
     return ctx.editMessageText(`Возврат - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].return } кг.`, return_product_count_keyboard(id));
 });
 returnScene.action(/decreasePiece:[0-9]{1,2}/, ctx => {
-    // const id = ctx.callbackQuery.data.split(':')[1];
-    // const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    // if (itemInCart === -1) return;
-
-    // if (ctx.session.cart[itemInCart].order >= ctx.session.products[id].package) {
-    //     const weight = ctx.session.cart[itemInCart].order - ctx.session.products[id].package;
-    //     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
-    // } else {
-    //     return;
-    // }
-
-    // let text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`
-    // if (ctx.session.stockBalance) text += `\nДоступно: ${ctx.session.products[id].maxWeigth} кг.`
-
-    // return ctx.editMessageText(text, product_count_keyboard(id));
-
-
-
     const id = ctx.callbackQuery.data.split(':')[1];
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
@@ -375,8 +338,34 @@ confirmScene.action('back', ctx => {
     ctx.deleteMessage();
     return ctx.scene.enter('itemScene');
 });
-confirmScene.action('confirm', ctx => {
+confirmScene.action('confirm', async ctx => {
     ctx.deleteMessage();
+
+    if (ctx.session.stockBalance) {
+      // Получаем текущее значение склада
+      const stockBalance = await helpers.getStockBalance();
+      const unAvailableProducts = [];
+
+      ctx.session.cart.forEach((product) => {
+        if (stockBalance[product.id] < product.order) {
+          unAvailableProducts.push(product);
+        }
+      });
+
+      if (unAvailableProducts.length) {
+        let text = "Наличие изменилось для следующих товаров:";
+        unAvailableProducts.forEach((product) => {
+          text += `\n${product.name}`;
+          ctx.session.cart = ctx.session.cart.filter(
+            (item) => item.id !== product.id
+          );
+        });
+
+        ctx.reply(text);
+        return ctx.scene.enter("itemScene");
+      }
+    }
+    
     ctx.replyWithHTML(ctx.scene.state.orderProducts);
     ctx.session.user = ctx.update.callback_query.from.id;
     return ctx.scene.enter('uploadScene');
@@ -450,18 +439,18 @@ uploadScene.enter(async ctx => {
               );
             }
             
-            // Удаляем айди, дату и оставшиеся четные значения возвратов
-            const orderTotal = emptyCells.slice(2).filter((e,i)=>!(i%2));
-            // Получаем текущее значение склада
-            let [stockBalance] = await helpers.getStockBalance(true);
-            // Заменяем запятые и приводим значения к числу
-            stockBalance = helpers.arrayValuesToNumber(stockBalance)
-            // Суммируем оба массива
-            for (let i = 0; i < stockBalance.length; i++) {
-                stockBalance[i] += orderTotal[i];
+            if (ctx.session.stockBalance) {
+                // Удаляем айди, дату и оставшиеся четные значения возвратов
+                const orderTotal = emptyCells.slice(2).filter((e,i)=>!(i%2));
+                // Получаем текущее значение склада
+                const stockBalance = await helpers.getStockBalance(true);
+                // Суммируем оба массива
+                for (let i = 0; i < stockBalance.length; i++) {
+                    stockBalance[i] += orderTotal[i];
+                }
+                // Записываем новые значения
+                await helpers.setStockBalance(stockBalance)
             }
-            // Записываем новые значения
-            await helpers.setStockBalance(stockBalance)
 
         }
     } catch (err) {

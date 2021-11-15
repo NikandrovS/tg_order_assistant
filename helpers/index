@@ -7,8 +7,39 @@ helpers.measuringType = (name) => (name.match(/\(шт\)/gm) ? "кг." : "г.");
 helpers.arrayValuesToNumber = (array) =>
   array.map((value) => parseFloat(value.replace(",", ".")));
 
+helpers.getProductList = async function () {
+  const auth = new google.auth.GoogleAuth({
+    keyFile: "keys.json",
+    scopes: "https://www.googleapis.com/auth/spreadsheets",
+  });
+
+  const authClientObject = await auth.getClient();
+  const googleSheetsInstance = google.sheets({ version: "v4", auth: authClientObject });
+  const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
+
+  const readData = await googleSheetsInstance.spreadsheets.values.get({
+    auth, //auth object
+    spreadsheetId, // spreadsheet id
+    range: "Склад" + process.env.PRODUCT_LIST_CELLS, //range of cells to read from.
+  });
+
+  if (readData.data.values) {
+    const stockRemains = await this.getStockBalance();
+    const [products, package] = readData.data.values;
+    return products.reduce((acc, value, idx) => [
+        ...acc,
+        {
+          name: value.trim(),
+          package: +package[idx],
+          stockRemains: stockRemains[idx],
+        },
+      ], []);
+  } 
+  return false;
+};
+
 helpers.getStockBalance = async function (string = "total") {
-  const range = string === "total" ? "!B18:P18" : "!B15:P15";
+  const range = string === "total" ? process.env.TOTAL_STOCK_REMAINS_CELLS : process.env.TOTAL_STOCK_ORDERED_CELLS;
   const auth = new google.auth.GoogleAuth({
     keyFile: "keys.json",
     scopes: "https://www.googleapis.com/auth/spreadsheets",
@@ -28,7 +59,8 @@ helpers.getStockBalance = async function (string = "total") {
   });
 
   if (readData.data.values) {
-    return readData.data.values;
+    const [values] = readData.data.values
+    return this.arrayValuesToNumber(values);
   }
 };
 
@@ -49,7 +81,7 @@ helpers.setStockBalance = async function (array) {
   await googleSheetsInstance.spreadsheets.values.update({
     auth,
     spreadsheetId,
-    range: "Склад" + "!B15:P15",
+    range: "Склад" + process.env.TOTAL_STOCK_ORDERED_CELLS,
     valueInputOption: "USER_ENTERED",
     resource: {
       values: renderArray,
