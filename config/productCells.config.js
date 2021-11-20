@@ -1,77 +1,72 @@
 module.exports = [
     {
         name: 'Паштет',
-        orderCellId: 2,
-        returnCellId: 3
+        orderCellId: 3,
+        returnCellId: 4
     },
     {
         name: 'Паштет рулет',
-        orderCellId: 4,
-        returnCellId: 5
+        orderCellId: 5,
+        returnCellId: 6
     },
     {
         name: 'Паштет в масле',
-        orderCellId: 6,
-        returnCellId: 7
+        orderCellId: 7,
+        returnCellId: 8
     },
     {
         name: 'Паштет рулет с черносливом',
-        orderCellId: 8,
-        returnCellId: 9
+        orderCellId: 9,
+        returnCellId: 10
     },
     {
         name: 'Паштет рулет с грибами',
-        orderCellId: 10,
-        returnCellId: 11
+        orderCellId: 11,
+        returnCellId: 12
     },
     {
         name: 'Паштет рулет с курагой',
-        orderCellId: 12,
-        returnCellId: 13
+        orderCellId: 13,
+        returnCellId: 14
     },
     {
         name: 'Рулет с чернослив. и грец.орехом',
-        orderCellId: 14,
-        returnCellId: 15
+        orderCellId: 15,
+        returnCellId: 16
     },
     {
         name: 'Паштет «деревенский»',
-        orderCellId: 16,
-        returnCellId: 17
+        orderCellId: 17,
+        returnCellId: 18
     },
     {
         name: '«Деревенский с грибами»',
-        orderCellId: 18,
-        returnCellId: 19
+        orderCellId: 19,
+        returnCellId: 20
     },
     {
         name: 'Масло Селедочное',
-        orderCellId: 20,
-        returnCellId: 21
+        orderCellId: 21,
+        returnCellId: 22
     },
     {
         name: 'Масло Селедочное (шт)',
-        orderCellId: 22,
-        returnCellId: 23
+        orderCellId: 23,
+        returnCellId: 24
     },
     {
         name: 'Масло Лососевое (шт)',
-        orderCellId: 24,
-        returnCellId: 25
-    },
-    {
-        name: 'Масло Лососевое',
-        orderCellId: 26,
-        returnCellId: 27
+        orderCellId: 25,
+        returnCellId: 26
     },
     {
         name: 'Студень Домашний (шт)',
-        orderCellId: 28,
-        returnCellId: 29
+        orderCellId: 27,
+        returnCellId: 28
     },
     {
         name: 'Студень Говяжий (шт)',
-        orderCellId: 30,
-        returnCellId: 31
+        orderCellId: 29,
+        returnCellId: 30
     }
 ];

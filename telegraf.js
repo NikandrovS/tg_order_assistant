@@ -77,7 +77,7 @@ function product_keyboard(products) {
         products
             .reduce((acc, item, idx) => {
                 const isAvailable = item.stockRemains >= item.package;
-                return [...acc, Markup.button.callback(isAvailable ? item.name : item.name + ' ❌', isAvailable ? 'choose:' + idx : 'return:' + idx)];
+                return [...acc, Markup.button.callback(isAvailable ? item.name : '❌ ' + item.name, isAvailable ? 'choose:' + idx : 'return:' + idx)];
             }, [])
             .reduce((resultArray, item, index, array) => {
                 const chunkIndex = Math.floor(index / 2);
@@ -402,9 +402,10 @@ uploadScene.enter(async ctx => {
 
             // Добавляем строку с пустыми значениями
             const emptyCells = [];
-            for (let i = 0; i < 30; i++) {
+            for (let i = 0; i < 28; i++) {
               if (!i) {
-                emptyCells.push(`${res.data.user}\n${res.data.store}`);
+                emptyCells.push(res.data.user);
+                emptyCells.push(res.data.store);
                 emptyCells.push(new Date(res.data.createdAt).toLocaleDateString());
               }
               emptyCells.push(0);
@@ -442,7 +443,7 @@ uploadScene.enter(async ctx => {
             
             if (ctx.session.stockBalance) {
                 // Удаляем айди, дату и оставшиеся четные значения возвратов
-                const orderTotal = emptyCells.slice(2).filter((e,i)=>!(i%2));
+                const orderTotal = emptyCells.slice(3).filter((e,i)=>!(i%2));
                 // Получаем текущее значение склада
                 const stockBalance = await helpers.getStockBalance(true);
                 // Суммируем оба массива
