@@ -2,7 +2,9 @@ const { google } = require("googleapis");
 
 const helpers = {};
 
-helpers.measuringType = (name) => (name.match(/\(шт\)/gm) ? "кг." : "г.");
+helpers.measuringType = (name) => (name.match(/\(шт\)/gm) ? "шт." : "кг.");
+
+helpers.returnMeasuringType = (name) => (name.match(/\(шт\)/gm) ? "шт." : "г.");
 
 helpers.arrayValuesToNumber = (array) =>
   array.map((value) => parseFloat(value.replace(",", ".")));

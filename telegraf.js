@@ -142,9 +142,13 @@ itemScene.enter(async ctx => {
 // Выбор продукта
 itemScene.action(/choose:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name;
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    const text = `Заказ: ${ctx.session.products[id].name}`;
+    let text = `Заказ - ${ name }`;
+
     if (itemInCart === -1) return ctx.editMessageText(text, product_count_keyboard(id));
+
+    text += `: ${ ctx.session.cart[itemInCart].order } ${ helpers.measuringType(name) }`
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
 itemScene.action('cancel', ctx => {
@@ -154,20 +158,11 @@ itemScene.action('cancel', ctx => {
 });
 
 // Действия с продуктом
-itemScene.action(/order:[0-9]{1,2}/, ctx => {
-    const id = ctx.callbackQuery.data.split(':')[1];
-    const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    if (!ctx.session.cart[itemInCart] || !ctx.session.cart[itemInCart].order) {
-        return ctx.editMessageText('Заказ: ' + ctx.session.products[id].name, product_count_keyboard(id));
-    }
-    return ctx.editMessageText(`${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
-});
 itemScene.action(/return:[0-9]{1,2}/, ctx => {
     ctx.deleteMessage();
     const id = ctx.callbackQuery.data.split(':')[1];
     return ctx.scene.enter('returnScene', { product: id });
 });
-
 itemScene.action('back', ctx => {
     return ctx.editMessageText(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard(ctx.session.products));
 });
@@ -184,13 +179,13 @@ function cartPreviewGenerator(cart) {
             index--;
         }
         if (product.order) {
-            totalString += `заказ ${ product.order } кг. `;
+            totalString += `заказ ${ product.order } ${ helpers.measuringType(product.name) }`;
         }
         if (product.order && product.return) {
             totalString += `/ `;
         }
         if (product.return) {
-            totalString += `возврат ${ product.return } ${ helpers.measuringType(product.name) }`;
+            totalString += `возврат ${ product.return } ${ helpers.returnMeasuringType(product.name) }`;
         }
     });
     return totalString;
@@ -205,15 +200,16 @@ itemScene.action('continue', ctx => {
 // Действие с весом
 itemScene.action(/increase:[0-9]{1,2}/, async ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
     if (itemInCart === -1) {
-        itemInCart = (ctx.session.cart.push({ id, name: ctx.session.products[id].name, order: 0, return: 0 })) - 1;
+        itemInCart = (ctx.session.cart.push({ id, name, order: 0, return: 0 })) - 1;
     }
 
     const weight = ctx.session.cart[itemInCart].order + ctx.session.products[id].package;
     if (ctx.session.stockBalance && weight > ctx.session.products[id].stockRemains) {
-        const { message_id } = await ctx.reply('Такого количества нет в наличии! ' + +weight.toFixed(2) + 'кг.')
+        const { message_id } = await ctx.reply('Такого количества нет в наличии! ' + +weight.toFixed(2) + helpers.measuringType(name))
         setTimeout(() => {
             ctx.deleteMessage(message_id);
         }, 1500);
@@ -222,12 +218,13 @@ itemScene.action(/increase:[0-9]{1,2}/, async ctx => {
 
     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
 
-    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`
+    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } ${ helpers.measuringType(name) }`
 
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
 itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name;
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
     if (itemInCart === -1) return;
 
@@ -238,7 +235,7 @@ itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
         return;
     }
 
-    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`;
+    const text = `Заказ - ${ name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } ${ helpers.measuringType(name) }`;
 
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
@@ -261,6 +258,7 @@ returnScene.enter(async ctx => {
 });
 returnScene.action(/increasePiece:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name;
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
     if (itemInCart === -1) {
@@ -270,10 +268,11 @@ returnScene.action(/increasePiece:[0-9]{1,2}/, ctx => {
     const weight = ctx.session.cart[itemInCart].return + ctx.session.products[id].package;
     ctx.session.cart[itemInCart].return = +weight.toFixed(2);
 
-    return ctx.editMessageText(`Возврат - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].return } кг.`, return_product_count_keyboard(id));
+    return ctx.editMessageText(`Возврат - ${ name }: ${ ctx.session.cart[itemInCart].return } ${ helpers.measuringType(name) }`, return_product_count_keyboard(id));
 });
 returnScene.action(/decreasePiece:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name;
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
     if (itemInCart === -1 || !ctx.session.cart[itemInCart].return) return
@@ -281,7 +280,7 @@ returnScene.action(/decreasePiece:[0-9]{1,2}/, ctx => {
     const weight = ctx.session.cart[itemInCart].return - ctx.session.products[id].package;
     ctx.session.cart[itemInCart].return = +weight.toFixed(2);
 
-    return ctx.editMessageText(`Возврат - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].return } кг.`, return_product_count_keyboard(id));
+    return ctx.editMessageText(`Возврат - ${ name }: ${ ctx.session.cart[itemInCart].return } ${ helpers.measuringType(name) }`, return_product_count_keyboard(id));
 });
 returnScene.on('text', ctx => {
     const id = ctx.scene.state.product;
@@ -320,13 +319,13 @@ confirmScene.enter(ctx => {
             totalString += `\n${ idx + 1 }) ${ product.name } - `;
         }
         if (product.order) {
-            totalString += `заказ ${ product.order } кг. `;
+            totalString += `заказ ${ product.order } ${ helpers.measuringType(product.name) }`;
         }
         if (product.order && product.return) {
             totalString += `/ `;
         }
         if (product.return) {
-            totalString += `возврат ${ product.return } ${ helpers.measuringType(product.name) }`;
+            totalString += `возврат ${ product.return } ${ helpers.returnMeasuringType(product.name) }`;
         }
     });
 
@@ -497,13 +496,13 @@ templateScene.on('text', async ctx => {
             totalString += `\n${ idx + 1 }) ${ product.name } - `;
         }
         if (product.order) {
-            totalString += `заказ ${ product.order } кг. `;
+            totalString += `заказ ${ product.order } ${ helpers.measuringType(product.name) }`;
         }
         if (product.order && product.return) {
             totalString += `/ `;
         }
         if (product.return) {
-            totalString += `возврат ${ product.return } ${ helpers.measuringType(product.name) }`;
+            totalString += `возврат ${ product.return } ${ helpers.returnMeasuringType(product.name) }`;
         }
     });
 
