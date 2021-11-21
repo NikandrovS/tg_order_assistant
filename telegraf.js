@@ -603,7 +603,7 @@ newCompanyDescriptionScene.action('cancel', ctx => {
 // Настройки
 const settingScene = new BaseScene('settingScene');
 settingScene.enter(async ctx => {
-    const res = await axios.get(process.env.BACKEND_HOST + '/api/company/' + ctx.update.message.from.id);
+    const res = await axios.get(process.env.BACKEND_HOST + '/api/company/all');
     ctx.scene.state.availableCompnaies = res.data;
     if (!res.data.length) {
         return ctx.reply('Выберите действие', new_company_keyboard);
