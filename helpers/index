@@ -91,4 +91,6 @@ helpers.setStockBalance = async function (array) {
   });
 };
 
+helpers.countFormatter = (num) => (num === 1 ? 'товара' : 'товаров');
+
 module.exports = helpers;

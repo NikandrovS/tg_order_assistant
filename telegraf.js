@@ -471,7 +471,12 @@ uploadScene.enter(async ctx => {
 // Оформление по шаблону
 const templateScene = new BaseScene('templateScene');
 templateScene.enter(async ctx => {
-    const { message_id } = await ctx.reply('Отправьте шаблон:\nНазвание организации\nНазвание продукта + заказ в кг. + возврат в гр.', cancel_keyboard);
+    const products = await helpers.getProductList();
+    const productList = products.reduce((acc, product, id) => {
+        const isAvailable = product.stockRemains >= product.package;
+        return acc += id + 1 + ') ' + (!isAvailable ? '❌ ' : "") + product.name + '\n';
+    }, new String)
+    const { message_id } = await ctx.reply('Отправьте шаблон:\nНазвание организации\nid продукта, заказ в кг., возврат в гр.:\n5) 0 200\n\n' + productList, cancel_keyboard);
     ctx.scene.state.welcomeMessage = message_id;
 });
 templateScene.on('text', async ctx => {
@@ -484,16 +489,33 @@ templateScene.on('text', async ctx => {
     ctx.scene.state.store = store;
 
     for (let i = 1; i < templateData.length; i++) {
-        const item = templateData[i].match(/(?<name>[а-яёА-Я]*\s?[а-яёА-Я]*\s?[а-яёА-Я]*\s?[а-яёА-Я]*)\s+(?<order>[0-9][\.\,]?[0-9]*)\s+(?<return>[0-9]*)/);
-        if (!item) return errorHandler('Товары не распознаны. Пример: Паштет 2 100');
+        const item = templateData[i].match(/(?<id>[0-9]*)\)\s+(?<order>[0-9]{1,2})\s+(?<return>[0-9]{1,4})/);
+        if (!item) return errorHandler('Позиция не распознана:\n' + templateData[i] + '\nПример: 1) 2 100');
         cart.push(item.groups);
     }
+    // Добавляем имя к объекту в корзине
+    cart.forEach(item => {
+        item.name = productCells.find(product => product.id === +item.id).name;
+        if (item.order) item.order = +item.order;
+        if (item.return) item.return = +item.return;
+    })
+    
+    const unAvailableProducts = [];
+    const stockBalance = await helpers.getStockBalance();
+    cart.forEach((product) => {
+        if (stockBalance[product.id - 1] < product.order) {
+            unAvailableProducts.push(product);
+            product.order = Math.floor(stockBalance[product.id - 1]);
+            product.changed = true;
+        }
+    });
+    
     ctx.scene.state.cart = cart;
 
     let totalString = `Организация: ${ store }\n\nВ заказе:`;
     cart.forEach((product, idx) => {
         if (product.order || product.return) {
-            totalString += `\n${ idx + 1 }) ${ product.name } - `;
+            totalString += `\n${ idx + 1 }) ${product.changed ? '⚠️' : ''} ${ product.name } - `;
         }
         if (product.order) {
             totalString += `заказ ${ product.order } ${ helpers.measuringType(product.name) }`;
@@ -505,6 +527,10 @@ templateScene.on('text', async ctx => {
             totalString += `возврат ${ product.return } ${ helpers.returnMeasuringType(product.name) }`;
         }
     });
+
+    if (unAvailableProducts.length) {
+        totalString += `\n\nКоличество изменено для ${unAvailableProducts.length} ${helpers.countFormatter(unAvailableProducts.length)}`;
+    }
 
     function errorHandler(errorText) {
         ctx.reply(errorText);
@@ -520,7 +546,7 @@ templateScene.action('back', async ctx => {
 });
 templateScene.action('confirm', ctx => {
     ctx.deleteMessage();
-    ctx.session.user = ctx.update.callback_query.from.id;
+    ctx.session.user = ctx.update.callback_query.from.id + ' (Ш)';
     ctx.session.store = ctx.scene.state.store;
     ctx.session.cart = ctx.scene.state.cart;
     ctx.session.companyList = 0;
@@ -669,8 +695,10 @@ bot.command('/order', async ctx => {
 
     return ctx.scene.enter('orderScene');
 });
-bot.command('/template', async ctx => ctx.reply('Раздел находится в доработке.'));
-// bot.command('/template', async ctx => ctx.scene.enter('templateScene'));
+bot.command('/template', async ctx => {
+    ctx.session.stockBalance = ctx.session.stockBalance ?? (ctx.session.stockBalance = true)
+    return ctx.scene.enter('templateScene')
+});
 bot.command('/settings', ctx => {
     const admins = require('./config/admin.config');
     if (admins.includes(ctx.message.from.id.toString())) {
