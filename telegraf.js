@@ -489,7 +489,7 @@ templateScene.on('text', async ctx => {
     ctx.scene.state.store = store;
 
     for (let i = 1; i < templateData.length; i++) {
-        const item = templateData[i].match(/(?<id>[0-9]*)\)\s+(?<order>[0-9]{1,2})\s+(?<return>[0-9]{1,4})/);
+        const item = templateData[i].match(/(?<id>[0-9]*)\)\s+[а-яА-Я\s\.]*\s+(?<order>[0-9]{1,2})\s+(?<return>[0-9]{1,4})/);
         if (!item) return errorHandler('Позиция не распознана:\n' + templateData[i] + '\nПример: 1) 2 100');
         cart.push(item.groups);
     }
