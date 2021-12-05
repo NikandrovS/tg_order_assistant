@@ -11,6 +11,7 @@ exports.create = async (req, res) => {
                 code: req.body.store.code || null,
             },
             product: req.body.product,
+            comment: req.body.comment,
         }).save();
 
         res.send(order);

@@ -68,6 +68,15 @@ const order_confirm_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Назад', 'back'),
     Markup.button.callback('Заказать', 'confirm')
 ]);
+const order_confirm_with_comment_keyboard = Markup.inlineKeyboard([
+    [
+        Markup.button.callback('Назад', 'back'),
+        Markup.button.callback('Заказать', 'confirm')
+    ],
+    [
+        Markup.button.callback('Комментарий к заказу', 'comment')
+    ]
+]);
 const cancel_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Отмена', 'cancel')
 ]);
@@ -307,6 +316,24 @@ returnScene.leave(ctx => {
     }, 0);
 });
 
+const commentScene = new BaseScene('commentScene');
+commentScene.enter(async ctx => {
+    const { message_id } = await ctx.reply('Напишите комментарий к заказу.', cancel_keyboard);
+    ctx.scene.state.welcomeMessage = message_id;
+});
+commentScene.on('text', ctx => {
+    ctx.session.comment = ctx.message.text;
+    return ctx.scene.leave();
+});
+commentScene.action('cancel', ctx => ctx.scene.leave());
+commentScene.leave(ctx => {
+    ctx.deleteMessage(ctx.scene.state.welcomeMessage);
+    setTimeout(() => {
+        return ctx.scene.enter('confirmScene');
+    }, 0);
+});
+
+
 const confirmScene = new BaseScene('confirmScene');
 confirmScene.enter(ctx => {
     const notEmptyProduct = (product) => (product.order !== 0 || product.return !== 0);
@@ -329,11 +356,19 @@ confirmScene.enter(ctx => {
         }
     });
 
+    if (ctx.session.comment) {
+        totalString += `\n\n<b>Комментарий:</b>\n${ctx.session.comment}`
+    }
+
     ctx.scene.state.orderProducts = totalString;
 
-    return ctx.replyWithHTML(totalString, order_confirm_keyboard);
+    return ctx.replyWithHTML(totalString, order_confirm_with_comment_keyboard);
 });
 
+confirmScene.action('comment', ctx => {
+    ctx.deleteMessage();
+    return ctx.scene.enter('commentScene');
+});
 confirmScene.action('back', ctx => {
     ctx.deleteMessage();
     return ctx.scene.enter('itemScene');
@@ -380,7 +415,11 @@ uploadScene.enter(async ctx => {
             code: ctx.session.storeCode || '',
         },
         product: ctx.session.cart,
+        comment: ctx.session.comment || '',
     };
+
+    ctx.session.storeCode = ctx.session.comment = undefined;
+
     try {
         const res = await axios.post(process.env.BACKEND_HOST + '/api', data);
 
@@ -409,6 +448,7 @@ uploadScene.enter(async ctx => {
                 emptyCells.push(res.data.store.name);
                 emptyCells.push(new Date(res.data.createdAt).toLocaleDateString());
                 emptyCells.push(res.data.store.code);
+                emptyCells.push(res.data.comment);
               }
               emptyCells.push(0);
             }
@@ -445,7 +485,7 @@ uploadScene.enter(async ctx => {
             
             if (ctx.session.stockBalance) {
                 // Удаляем айди, дату и оставшиеся четные значения возвратов
-                const orderTotal = emptyCells.slice(3).filter((e,i)=>!(i%2));
+                const orderTotal = emptyCells.slice(4).filter((e,i)=>!(i%2));
                 // Получаем текущее значение склада
                 const stockBalance = await helpers.getStockBalance(true);
                 // Суммируем оба массива
@@ -491,9 +531,14 @@ templateScene.on('text', async ctx => {
     ctx.scene.state.storeCode = templateData[0];
     ctx.scene.state.store = templateData[1];
 
+    if (templateData.length > 4 && templateData[templateData.length - 2] === '') {
+        ctx.session.comment = templateData[templateData.length - 1];
+    } 
+
     for (let i = 2; i < templateData.length; i++) {
+        if (templateData[i] === '') break;
         const item = templateData[i].match(/(?<id>[0-9]*)\)\s+[а-яА-Я\s\.]*\s+(?<order>[0-9]{1,2})\s+(?<return>[0-9]{1,4})/);
-        if (!item) return errorHandler('Позиция не распознана:\n' + templateData[i] + '\nПример: 1) 2 100');
+        if (!item) return errorHandler('Позиция не распознана:\n' + templateData[i] + '\nПример: 1) Масло селедочное 2 100');
         cart.push(item.groups);
     }
     // Добавляем имя к объекту в корзине
@@ -508,7 +553,7 @@ templateScene.on('text', async ctx => {
     cart.forEach((product) => {
         if (stockBalance[product.id - 1] < product.order) {
             unAvailableProducts.push(product);
-            product.order = Math.floor(stockBalance[product.id - 1]);
+            product.order = stockBalance[product.id - 1] > 0 ? Math.floor(stockBalance[product.id - 1]) : 0;
             product.changed = true;
         }
     });
@@ -535,6 +580,10 @@ templateScene.on('text', async ctx => {
         totalString += `\n\nКоличество изменено для ${unAvailableProducts.length} ${helpers.countFormatter(unAvailableProducts.length)}`;
     }
 
+    if (ctx.session.comment) {
+        totalString += `\n\n<b>Комментарий:</b>\n${ctx.session.comment}`
+    }
+
     function errorHandler(errorText) {
         ctx.reply(errorText, cancel_keyboard);
     }
@@ -544,6 +593,7 @@ templateScene.on('text', async ctx => {
 });
 templateScene.action('back', async ctx => {
     ctx.deleteMessage();
+    ctx.session.comment = ctx.session.storeCode = ctx.scene.state.storeCode = undefined;
     const { message_id } = await ctx.reply('Отправьте шаблон', cancel_keyboard);
     ctx.scene.state.welcomeMessage = message_id;
 });
@@ -686,7 +736,7 @@ settingScene.action('cancel', ctx => {
     return ctx.scene.leave();
 });
 
-const stage = new Stage([templateScene, orderScene, itemScene, confirmScene, returnScene, uploadScene, settingScene, newCompanyScene, newCompanyUserIdScene, newCompanyDescriptionScene]);
+const stage = new Stage([templateScene, orderScene, itemScene, confirmScene, commentScene, returnScene, uploadScene, settingScene, newCompanyScene, newCompanyUserIdScene, newCompanyDescriptionScene]);
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
