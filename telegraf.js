@@ -375,8 +375,11 @@ const uploadScene = new BaseScene('uploadScene');
 uploadScene.enter(async ctx => {
     const data = {
         user: ctx.session.user,
-        store: ctx.session.store,
-        product: ctx.session.cart
+        store: {
+            name: ctx.session.store,
+            code: ctx.session.storeCode || '',
+        },
+        product: ctx.session.cart,
     };
     try {
         const res = await axios.post(process.env.BACKEND_HOST + '/api', data);
@@ -403,9 +406,9 @@ uploadScene.enter(async ctx => {
             const emptyCells = [];
             for (let i = 0; i < 28; i++) {
               if (!i) {
-                emptyCells.push(res.data.user);
-                emptyCells.push(res.data.store);
+                emptyCells.push(res.data.store.name);
                 emptyCells.push(new Date(res.data.createdAt).toLocaleDateString());
+                emptyCells.push(res.data.store.code);
               }
               emptyCells.push(0);
             }
@@ -483,12 +486,12 @@ templateScene.on('text', async ctx => {
     const cart = [];
 
     const templateData = ctx.message.text.split(/\n/);
-    if (templateData.length < 2) return errorHandler('Сообщение должно содержать не менее двух строк.');
+    if (templateData.length < 3) return errorHandler('Сообщение должно содержать не менее трех строк.');
 
-    const store = templateData[0];
-    ctx.scene.state.store = store;
+    ctx.scene.state.storeCode = templateData[0];
+    ctx.scene.state.store = templateData[1];
 
-    for (let i = 1; i < templateData.length; i++) {
+    for (let i = 2; i < templateData.length; i++) {
         const item = templateData[i].match(/(?<id>[0-9]*)\)\s+[а-яА-Я\s\.]*\s+(?<order>[0-9]{1,2})\s+(?<return>[0-9]{1,4})/);
         if (!item) return errorHandler('Позиция не распознана:\n' + templateData[i] + '\nПример: 1) 2 100');
         cart.push(item.groups);
@@ -512,7 +515,7 @@ templateScene.on('text', async ctx => {
     
     ctx.scene.state.cart = cart;
 
-    let totalString = `Организация: ${ store }\n\nВ заказе:`;
+    let totalString = `Организация: ${ ctx.scene.state.store }\n\nВ заказе:`;
     cart.forEach((product, idx) => {
         if (product.order || product.return) {
             totalString += `\n${ idx + 1 }) ${product.changed ? '⚠️' : ''} ${ product.name } - `;
@@ -533,7 +536,7 @@ templateScene.on('text', async ctx => {
     }
 
     function errorHandler(errorText) {
-        ctx.reply(errorText);
+        ctx.reply(errorText, cancel_keyboard);
     }
 
     ctx.deleteMessage(ctx.scene.state.welcomeMessage);
@@ -546,8 +549,9 @@ templateScene.action('back', async ctx => {
 });
 templateScene.action('confirm', ctx => {
     ctx.deleteMessage();
-    ctx.session.user = ctx.update.callback_query.from.id + ' (Ш)';
+    ctx.session.user = ctx.update.callback_query.from.id;
     ctx.session.store = ctx.scene.state.store;
+    ctx.session.storeCode = ctx.scene.state.storeCode;
     ctx.session.cart = ctx.scene.state.cart;
     ctx.session.companyList = 0;
     return ctx.scene.enter('uploadScene');

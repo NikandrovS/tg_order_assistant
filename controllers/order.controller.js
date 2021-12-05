@@ -6,8 +6,11 @@ exports.create = async (req, res) => {
     try {
         const order = await new Order({
             user: req.body.user,
-            store: req.body.store,
-            product: req.body.product
+            store: {
+                name: req.body.store.name,
+                code: req.body.store.code || null,
+            },
+            product: req.body.product,
         }).save();
 
         res.send(order);
