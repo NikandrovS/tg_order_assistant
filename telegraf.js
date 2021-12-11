@@ -86,7 +86,7 @@ function product_keyboard(products) {
         products
             .reduce((acc, item, idx) => {
                 const isAvailable = item.stockRemains >= item.package;
-                return [...acc, Markup.button.callback(isAvailable ? item.name : '❌ ' + item.name, isAvailable ? 'choose:' + idx : 'return:' + idx)];
+                return [...acc, Markup.button.callback(helpers.keyboardNameGenerator(item, isAvailable), isAvailable ? 'choose:' + idx : 'return:' + idx)];
             }, [])
             .reduce((resultArray, item, index, array) => {
                 const chunkIndex = Math.floor(index / 2);
@@ -450,7 +450,7 @@ uploadScene.enter(async ctx => {
                 emptyCells.push(res.data.store.code);
                 emptyCells.push(res.data.comment);
               }
-              emptyCells.push(0);
+              emptyCells.push('');
             }
             // Проходимся по каждому товару, узнаем id ячеек по имени продукта
             for (let i = 0; i < res.data.product.length; i++) {

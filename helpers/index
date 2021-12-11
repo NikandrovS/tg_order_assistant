@@ -1,4 +1,5 @@
 const { google } = require("googleapis");
+const productCells = require('../config/productCells.config');
 
 const helpers = {};
 
@@ -8,6 +9,8 @@ helpers.returnMeasuringType = (name) => (name.match(/\(шт\)/gm) ? "шт." : "�
 
 helpers.arrayValuesToNumber = (array) =>
   array.map((value) => parseFloat(value.replace(",", ".")));
+
+helpers.keyboardNameGenerator = (product, available) => (available ? (product.shortName || product.name) : '❌ ' + (product.shortName || product.name))
 
 helpers.getProductList = async function () {
   const auth = new google.auth.GoogleAuth({
@@ -32,6 +35,7 @@ helpers.getProductList = async function () {
         ...acc,
         {
           name: value.trim(),
+          shortName: getProductShortName(value.trim()),
           package: +package[idx],
           stockRemains: stockRemains[idx],
         },
@@ -92,5 +96,7 @@ helpers.setStockBalance = async function (array) {
 };
 
 helpers.countFormatter = (num) => (num === 1 ? 'товара' : 'товаров');
+
+getProductShortName = (name) => productCells.find(product => product.name === name).shortName;
 
 module.exports = helpers;
