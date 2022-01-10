@@ -6,6 +6,7 @@ mongoose.Promise = global.Promise;
 const db = {};
 db.mongoose = mongoose;
 db.url = dbConfig.url;
+db.meta = require("./meta.model")(mongoose);
 db.orders = require("./orders.model")(mongoose);
 db.company = require("./company.model")(mongoose);
 

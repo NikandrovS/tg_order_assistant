@@ -1,4 +1,5 @@
 module.exports = app => {
+    const meta = require("../controllers/meta.controller.js");
     const orders = require("../controllers/order.controller.js");
     const company = require("../controllers/company.controller.js");
 
@@ -24,6 +25,11 @@ module.exports = app => {
 
     // Delete company
     router.delete("/company/:id", company.delete);
+
+    // Meta data
+    router.get("/meta", meta.getData);
+    router.get("/meta/updateStockSheet", meta.updateStockSheet);
+    router.delete("/meta/deleteConfig", meta.deleteMainRecord);
 
     app.use('/api', router);
 };

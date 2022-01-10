@@ -145,7 +145,7 @@ const itemScene = new BaseScene('itemScene');
 itemScene.enter(async ctx => {
     ctx.session.products = await helpers.getProductList() || localProducts;
 
-    ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard(ctx.session.products));
+    ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?\nНаличие актуально на ${ctx.session.products[0].actualFor}`, product_keyboard(ctx.session.products));
 });
 
 // Выбор продукта
@@ -437,7 +437,7 @@ uploadScene.enter(async ctx => {
             //Google sheets instance
             const googleSheetsInstance = google.sheets({ version: "v4", auth: authClientObject });
 
-            const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
+            const spreadsheetId = await helpers.getActualStockSheetId();
 
             let renderArray = [];
 
@@ -763,6 +763,11 @@ bot.command('/id', ctx => {
     const userId = ctx.message.from.id;
     ctx.reply('Ваш идентификатор: ' + userId);
 });
+// bot.command('/123', async ctx => {
+//     const qwe = await helpers.getSheetId()
+//     // const userId = ctx.message.from.id;
+//     ctx.reply(qwe);
+// });
 bot.command("/groupid", (ctx) => {
   ctx.reply("Идентификатор группы: " + ctx.message.chat.id);
 });
