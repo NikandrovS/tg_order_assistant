@@ -68,6 +68,15 @@ const order_confirm_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Назад', 'back'),
     Markup.button.callback('Заказать', 'confirm')
 ]);
+const order_confirm_with_comment_keyboard = Markup.inlineKeyboard([
+    [
+        Markup.button.callback('Назад', 'back'),
+        Markup.button.callback('Заказать', 'confirm')
+    ],
+    [
+        Markup.button.callback('Комментарий к заказу', 'comment')
+    ]
+]);
 const cancel_keyboard = Markup.inlineKeyboard([
     Markup.button.callback('Отмена', 'cancel')
 ]);
@@ -77,7 +86,7 @@ function product_keyboard(products) {
         products
             .reduce((acc, item, idx) => {
                 const isAvailable = item.stockRemains >= item.package;
-                return [...acc, Markup.button.callback(isAvailable ? item.name : item.name + ' ❌', isAvailable ? 'choose:' + idx : 'return:' + idx)];
+                return [...acc, Markup.button.callback(helpers.keyboardNameGenerator(item, isAvailable), isAvailable ? 'choose:' + idx : 'return:' + idx)];
             }, [])
             .reduce((resultArray, item, index, array) => {
                 const chunkIndex = Math.floor(index / 2);
@@ -136,15 +145,19 @@ const itemScene = new BaseScene('itemScene');
 itemScene.enter(async ctx => {
     ctx.session.products = await helpers.getProductList() || localProducts;
 
-    ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard(ctx.session.products));
+    ctx.reply(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?\nНаличие актуально на ${ctx.session.products[0].actualFor}`, product_keyboard(ctx.session.products));
 });
 
 // Выбор продукта
 itemScene.action(/choose:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name;
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    const text = `Заказ: ${ctx.session.products[id].name}`;
+    let text = `Заказ - ${ name }`;
+
     if (itemInCart === -1) return ctx.editMessageText(text, product_count_keyboard(id));
+
+    text += `: ${ ctx.session.cart[itemInCart].order } ${ helpers.measuringType(name) }`
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
 itemScene.action('cancel', ctx => {
@@ -154,20 +167,11 @@ itemScene.action('cancel', ctx => {
 });
 
 // Действия с продуктом
-itemScene.action(/order:[0-9]{1,2}/, ctx => {
-    const id = ctx.callbackQuery.data.split(':')[1];
-    const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
-    if (!ctx.session.cart[itemInCart] || !ctx.session.cart[itemInCart].order) {
-        return ctx.editMessageText('Заказ: ' + ctx.session.products[id].name, product_count_keyboard(id));
-    }
-    return ctx.editMessageText(`${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`, product_count_keyboard(id));
-});
 itemScene.action(/return:[0-9]{1,2}/, ctx => {
     ctx.deleteMessage();
     const id = ctx.callbackQuery.data.split(':')[1];
     return ctx.scene.enter('returnScene', { product: id });
 });
-
 itemScene.action('back', ctx => {
     return ctx.editMessageText(ctx.session.cart.length ? cartPreviewGenerator(ctx.session.cart) : `Какой продукт необходимо доставить в ${ ctx.session.store }?`, product_keyboard(ctx.session.products));
 });
@@ -184,13 +188,13 @@ function cartPreviewGenerator(cart) {
             index--;
         }
         if (product.order) {
-            totalString += `заказ ${ product.order } кг. `;
+            totalString += `заказ ${ product.order } ${ helpers.measuringType(product.name) }`;
         }
         if (product.order && product.return) {
             totalString += `/ `;
         }
         if (product.return) {
-            totalString += `возврат ${ product.return } ${ helpers.measuringType(product.name) }`;
+            totalString += `возврат ${ product.return } ${ helpers.returnMeasuringType(product.name) }`;
         }
     });
     return totalString;
@@ -205,15 +209,16 @@ itemScene.action('continue', ctx => {
 // Действие с весом
 itemScene.action(/increase:[0-9]{1,2}/, async ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
     if (itemInCart === -1) {
-        itemInCart = (ctx.session.cart.push({ id, name: ctx.session.products[id].name, order: 0, return: 0 })) - 1;
+        itemInCart = (ctx.session.cart.push({ id, name, order: 0, return: 0 })) - 1;
     }
 
     const weight = ctx.session.cart[itemInCart].order + ctx.session.products[id].package;
     if (ctx.session.stockBalance && weight > ctx.session.products[id].stockRemains) {
-        const { message_id } = await ctx.reply('Такого количества нет в наличии! ' + +weight.toFixed(2) + 'кг.')
+        const { message_id } = await ctx.reply('Такого количества нет в наличии! ' + +weight.toFixed(2) + helpers.measuringType(name))
         setTimeout(() => {
             ctx.deleteMessage(message_id);
         }, 1500);
@@ -222,12 +227,13 @@ itemScene.action(/increase:[0-9]{1,2}/, async ctx => {
 
     ctx.session.cart[itemInCart].order = +weight.toFixed(2);
 
-    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } кг.`
+    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].order } ${ helpers.measuringType(name) }`
 
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
 itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name;
     const itemInCart = ctx.session.cart.findIndex(product => product.id === id);
     if (itemInCart === -1) return;
 
@@ -238,7 +244,7 @@ itemScene.action(/decrease:[0-9]{1,2}/, ctx => {
         return;
     }
 
-    const text = `Заказ - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } кг.`;
+    const text = `Заказ - ${ name }: ${ ctx.session.cart[itemInCart] ? ctx.session.cart[itemInCart].order : 0 } ${ helpers.measuringType(name) }`;
 
     return ctx.editMessageText(text, product_count_keyboard(id));
 });
@@ -261,6 +267,7 @@ returnScene.enter(async ctx => {
 });
 returnScene.action(/increasePiece:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name;
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
     if (itemInCart === -1) {
@@ -270,10 +277,11 @@ returnScene.action(/increasePiece:[0-9]{1,2}/, ctx => {
     const weight = ctx.session.cart[itemInCart].return + ctx.session.products[id].package;
     ctx.session.cart[itemInCart].return = +weight.toFixed(2);
 
-    return ctx.editMessageText(`Возврат - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].return } кг.`, return_product_count_keyboard(id));
+    return ctx.editMessageText(`Возврат - ${ name }: ${ ctx.session.cart[itemInCart].return } ${ helpers.measuringType(name) }`, return_product_count_keyboard(id));
 });
 returnScene.action(/decreasePiece:[0-9]{1,2}/, ctx => {
     const id = ctx.callbackQuery.data.split(':')[1];
+    const name = ctx.session.products[id].name;
     let itemInCart = ctx.session.cart.findIndex(product => product.id === id);
 
     if (itemInCart === -1 || !ctx.session.cart[itemInCart].return) return
@@ -281,7 +289,7 @@ returnScene.action(/decreasePiece:[0-9]{1,2}/, ctx => {
     const weight = ctx.session.cart[itemInCart].return - ctx.session.products[id].package;
     ctx.session.cart[itemInCart].return = +weight.toFixed(2);
 
-    return ctx.editMessageText(`Возврат - ${ ctx.session.products[id].name }: ${ ctx.session.cart[itemInCart].return } кг.`, return_product_count_keyboard(id));
+    return ctx.editMessageText(`Возврат - ${ name }: ${ ctx.session.cart[itemInCart].return } ${ helpers.measuringType(name) }`, return_product_count_keyboard(id));
 });
 returnScene.on('text', ctx => {
     const id = ctx.scene.state.product;
@@ -308,6 +316,24 @@ returnScene.leave(ctx => {
     }, 0);
 });
 
+const commentScene = new BaseScene('commentScene');
+commentScene.enter(async ctx => {
+    const { message_id } = await ctx.reply('Напишите комментарий к заказу.', cancel_keyboard);
+    ctx.scene.state.welcomeMessage = message_id;
+});
+commentScene.on('text', ctx => {
+    ctx.session.comment = ctx.message.text;
+    return ctx.scene.leave();
+});
+commentScene.action('cancel', ctx => ctx.scene.leave());
+commentScene.leave(ctx => {
+    ctx.deleteMessage(ctx.scene.state.welcomeMessage);
+    setTimeout(() => {
+        return ctx.scene.enter('confirmScene');
+    }, 0);
+});
+
+
 const confirmScene = new BaseScene('confirmScene');
 confirmScene.enter(ctx => {
     const notEmptyProduct = (product) => (product.order !== 0 || product.return !== 0);
@@ -320,21 +346,29 @@ confirmScene.enter(ctx => {
             totalString += `\n${ idx + 1 }) ${ product.name } - `;
         }
         if (product.order) {
-            totalString += `заказ ${ product.order } кг. `;
+            totalString += `заказ ${ product.order } ${ helpers.measuringType(product.name) }`;
         }
         if (product.order && product.return) {
             totalString += `/ `;
         }
         if (product.return) {
-            totalString += `возврат ${ product.return } ${ helpers.measuringType(product.name) }`;
+            totalString += `возврат ${ product.return } ${ helpers.returnMeasuringType(product.name) }`;
         }
     });
 
+    if (ctx.session.comment) {
+        totalString += `\n\n<b>Комментарий:</b>\n${ctx.session.comment}`
+    }
+
     ctx.scene.state.orderProducts = totalString;
 
-    return ctx.replyWithHTML(totalString, order_confirm_keyboard);
+    return ctx.replyWithHTML(totalString, order_confirm_with_comment_keyboard);
 });
 
+confirmScene.action('comment', ctx => {
+    ctx.deleteMessage();
+    return ctx.scene.enter('commentScene');
+});
 confirmScene.action('back', ctx => {
     ctx.deleteMessage();
     return ctx.scene.enter('itemScene');
@@ -376,9 +410,16 @@ const uploadScene = new BaseScene('uploadScene');
 uploadScene.enter(async ctx => {
     const data = {
         user: ctx.session.user,
-        store: ctx.session.store,
-        product: ctx.session.cart
+        store: {
+            name: ctx.session.store,
+            code: ctx.session.storeCode || '',
+        },
+        product: ctx.session.cart,
+        comment: ctx.session.comment || '',
     };
+
+    ctx.session.storeCode = ctx.session.comment = undefined;
+
     try {
         const res = await axios.post(process.env.BACKEND_HOST + '/api', data);
 
@@ -396,18 +437,20 @@ uploadScene.enter(async ctx => {
             //Google sheets instance
             const googleSheetsInstance = google.sheets({ version: "v4", auth: authClientObject });
 
-            const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
+            const spreadsheetId = await helpers.getActualStockSheetId();
 
             let renderArray = [];
 
             // Добавляем строку с пустыми значениями
             const emptyCells = [];
-            for (let i = 0; i < 30; i++) {
+            for (let i = 0; i < 28; i++) {
               if (!i) {
-                emptyCells.push(`${res.data.user}\n${res.data.store}`);
+                emptyCells.push(res.data.store.name);
                 emptyCells.push(new Date(res.data.createdAt).toLocaleDateString());
+                emptyCells.push(res.data.store.code);
+                emptyCells.push(res.data.comment);
               }
-              emptyCells.push(0);
+              emptyCells.push('');
             }
             // Проходимся по каждому товару, узнаем id ячеек по имени продукта
             for (let i = 0; i < res.data.product.length; i++) {
@@ -442,7 +485,7 @@ uploadScene.enter(async ctx => {
             
             if (ctx.session.stockBalance) {
                 // Удаляем айди, дату и оставшиеся четные значения возвратов
-                const orderTotal = emptyCells.slice(2).filter((e,i)=>!(i%2));
+                const orderTotal = emptyCells.slice(4).filter((e,i)=>!(i%2));
                 // Получаем текущее значение склада
                 const stockBalance = await helpers.getStockBalance(true);
                 // Суммируем оба массива
@@ -471,43 +514,78 @@ uploadScene.enter(async ctx => {
 // Оформление по шаблону
 const templateScene = new BaseScene('templateScene');
 templateScene.enter(async ctx => {
-    const { message_id } = await ctx.reply('Отправьте шаблон:\nНазвание организации\nНазвание продукта + заказ в кг. + возврат в гр.', cancel_keyboard);
+    const products = await helpers.getProductList();
+    const productList = products.reduce((acc, product, id) => {
+        const isAvailable = product.stockRemains >= product.package;
+        return acc += id + 1 + ') ' + (!isAvailable ? '❌ ' : "") + product.name + '\n';
+    }, new String)
+    const { message_id } = await ctx.reply('Отправьте шаблон:\nНазвание организации\nid продукта, заказ в кг., возврат в гр.:\n5) 0 200\n\n' + productList, cancel_keyboard);
     ctx.scene.state.welcomeMessage = message_id;
 });
 templateScene.on('text', async ctx => {
     const cart = [];
 
     const templateData = ctx.message.text.split(/\n/);
-    if (templateData.length < 2) return errorHandler('Сообщение должно содержать не менее двух строк.');
+    if (templateData.length < 3) return errorHandler('Сообщение должно содержать не менее трех строк.');
 
-    const store = templateData[0];
-    ctx.scene.state.store = store;
+    ctx.scene.state.storeCode = templateData[0];
+    ctx.scene.state.store = templateData[1];
 
-    for (let i = 1; i < templateData.length; i++) {
-        const item = templateData[i].match(/(?<name>[а-яёА-Я]*\s?[а-яёА-Я]*\s?[а-яёА-Я]*\s?[а-яёА-Я]*)\s+(?<order>[0-9][\.\,]?[0-9]*)\s+(?<return>[0-9]*)/);
-        if (!item) return errorHandler('Товары не распознаны. Пример: Паштет 2 100');
+    if (templateData.length > 4 && templateData[templateData.length - 2] === '') {
+        ctx.session.comment = templateData[templateData.length - 1];
+    } 
+
+    for (let i = 2; i < templateData.length; i++) {
+        if (templateData[i] === '') break;
+        const item = templateData[i].match(/(?<id>[0-9]*)\)\s+[а-яА-Я\s\.]*\s+(?<order>[0-9]{1,2})\s+(?<return>[0-9]{1,4})/);
+        if (!item) return errorHandler('Позиция не распознана:\n' + templateData[i] + '\nПример: 1) Масло селедочное 2 100');
         cart.push(item.groups);
     }
+    // Добавляем имя к объекту в корзине
+    cart.forEach(item => {
+        item.name = productCells.find(product => product.id === +item.id).name;
+        if (item.order) item.order = +item.order;
+        if (item.return) item.return = +item.return;
+    })
+    
+    const unAvailableProducts = [];
+    const stockBalance = await helpers.getStockBalance();
+    cart.forEach((product) => {
+        if (stockBalance[product.id - 1] < product.order) {
+            unAvailableProducts.push(product);
+            product.order = stockBalance[product.id - 1] > 0 ? Math.floor(stockBalance[product.id - 1]) : 0;
+            product.changed = true;
+        }
+    });
+    
     ctx.scene.state.cart = cart;
 
-    let totalString = `Организация: ${ store }\n\nВ заказе:`;
+    let totalString = `Организация: ${ ctx.scene.state.store }\n\nВ заказе:`;
     cart.forEach((product, idx) => {
         if (product.order || product.return) {
-            totalString += `\n${ idx + 1 }) ${ product.name } - `;
+            totalString += `\n${ idx + 1 }) ${product.changed ? '⚠️' : ''} ${ product.name } - `;
         }
         if (product.order) {
-            totalString += `заказ ${ product.order } кг. `;
+            totalString += `заказ ${ product.order } ${ helpers.measuringType(product.name) }`;
         }
         if (product.order && product.return) {
             totalString += `/ `;
         }
         if (product.return) {
-            totalString += `возврат ${ product.return } ${ helpers.measuringType(product.name) }`;
+            totalString += `возврат ${ product.return } ${ helpers.returnMeasuringType(product.name) }`;
         }
     });
 
+    if (unAvailableProducts.length) {
+        totalString += `\n\nКоличество изменено для ${unAvailableProducts.length} ${helpers.countFormatter(unAvailableProducts.length)}`;
+    }
+
+    if (ctx.session.comment) {
+        totalString += `\n\n<b>Комментарий:</b>\n${ctx.session.comment}`
+    }
+
     function errorHandler(errorText) {
-        ctx.reply(errorText);
+        ctx.reply(errorText, cancel_keyboard);
     }
 
     ctx.deleteMessage(ctx.scene.state.welcomeMessage);
@@ -515,6 +593,7 @@ templateScene.on('text', async ctx => {
 });
 templateScene.action('back', async ctx => {
     ctx.deleteMessage();
+    ctx.session.comment = ctx.session.storeCode = ctx.scene.state.storeCode = undefined;
     const { message_id } = await ctx.reply('Отправьте шаблон', cancel_keyboard);
     ctx.scene.state.welcomeMessage = message_id;
 });
@@ -522,6 +601,7 @@ templateScene.action('confirm', ctx => {
     ctx.deleteMessage();
     ctx.session.user = ctx.update.callback_query.from.id;
     ctx.session.store = ctx.scene.state.store;
+    ctx.session.storeCode = ctx.scene.state.storeCode;
     ctx.session.cart = ctx.scene.state.cart;
     ctx.session.companyList = 0;
     return ctx.scene.enter('uploadScene');
@@ -603,7 +683,7 @@ newCompanyDescriptionScene.action('cancel', ctx => {
 // Настройки
 const settingScene = new BaseScene('settingScene');
 settingScene.enter(async ctx => {
-    const res = await axios.get(process.env.BACKEND_HOST + '/api/company/' + ctx.update.message.from.id);
+    const res = await axios.get(process.env.BACKEND_HOST + '/api/company/all');
     ctx.scene.state.availableCompnaies = res.data;
     if (!res.data.length) {
         return ctx.reply('Выберите действие', new_company_keyboard);
@@ -656,7 +736,7 @@ settingScene.action('cancel', ctx => {
     return ctx.scene.leave();
 });
 
-const stage = new Stage([templateScene, orderScene, itemScene, confirmScene, returnScene, uploadScene, settingScene, newCompanyScene, newCompanyUserIdScene, newCompanyDescriptionScene]);
+const stage = new Stage([templateScene, orderScene, itemScene, confirmScene, commentScene, returnScene, uploadScene, settingScene, newCompanyScene, newCompanyUserIdScene, newCompanyDescriptionScene]);
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
@@ -669,8 +749,10 @@ bot.command('/order', async ctx => {
 
     return ctx.scene.enter('orderScene');
 });
-bot.command('/template', async ctx => ctx.reply('Раздел находится в доработке.'));
-// bot.command('/template', async ctx => ctx.scene.enter('templateScene'));
+bot.command('/template', async ctx => {
+    ctx.session.stockBalance = ctx.session.stockBalance ?? (ctx.session.stockBalance = true)
+    return ctx.scene.enter('templateScene')
+});
 bot.command('/settings', ctx => {
     const admins = require('./config/admin.config');
     if (admins.includes(ctx.message.from.id.toString())) {
@@ -681,6 +763,11 @@ bot.command('/id', ctx => {
     const userId = ctx.message.from.id;
     ctx.reply('Ваш идентификатор: ' + userId);
 });
+// bot.command('/123', async ctx => {
+//     const qwe = await helpers.getSheetId()
+//     // const userId = ctx.message.from.id;
+//     ctx.reply(qwe);
+// });
 bot.command("/groupid", (ctx) => {
   ctx.reply("Идентификатор группы: " + ctx.message.chat.id);
 });

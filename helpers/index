@@ -1,11 +1,18 @@
 const { google } = require("googleapis");
+const productCells = require('../config/productCells.config');
+const db = require("../models");
+const Meta = db.meta;
 
 const helpers = {};
 
-helpers.measuringType = (name) => (name.match(/\(шт\)/gm) ? "кг." : "г.");
+helpers.measuringType = (name) => (name.match(/\(шт\)/gm) ? "шт." : "кг.");
+
+helpers.returnMeasuringType = (name) => (name.match(/\(шт\)/gm) ? "шт." : "г.");
 
 helpers.arrayValuesToNumber = (array) =>
   array.map((value) => parseFloat(value.replace(",", ".")));
+
+helpers.keyboardNameGenerator = (product, available) => (available ? (product.shortName || product.name) : '❌ ' + (product.shortName || product.name))
 
 helpers.getProductList = async function () {
   const auth = new google.auth.GoogleAuth({
@@ -15,7 +22,7 @@ helpers.getProductList = async function () {
 
   const authClientObject = await auth.getClient();
   const googleSheetsInstance = google.sheets({ version: "v4", auth: authClientObject });
-  const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
+  const spreadsheetId = await helpers.getActualStockSheetId();
 
   const readData = await googleSheetsInstance.spreadsheets.values.get({
     auth, //auth object
@@ -23,15 +30,21 @@ helpers.getProductList = async function () {
     range: "Склад" + process.env.PRODUCT_LIST_CELLS, //range of cells to read from.
   });
 
-  if (readData.data.values) {
+  const values = readData.data.values;
+  if (values) {
+    const date = values[0][0]
+    values.forEach(value => value.shift())
+
     const stockRemains = await this.getStockBalance();
-    const [products, package] = readData.data.values;
+    const [products, package] = values;
     return products.reduce((acc, value, idx) => [
         ...acc,
         {
           name: value.trim(),
+          shortName: getProductShortName(value.trim()),
           package: +package[idx],
           stockRemains: stockRemains[idx],
+          actualFor: date,
         },
       ], []);
   } 
@@ -50,7 +63,7 @@ helpers.getStockBalance = async function (string = "total") {
     version: "v4",
     auth: authClientObject,
   });
-  const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
+  const spreadsheetId = await helpers.getActualStockSheetId();
 
   const readData = await googleSheetsInstance.spreadsheets.values.get({
     auth,
@@ -75,7 +88,7 @@ helpers.setStockBalance = async function (array) {
     version: "v4",
     auth: authClientObject,
   });
-  const spreadsheetId = process.env.GOOGLE_ORDER_SHEET;
+  const spreadsheetId = await helpers.getActualStockSheetId();
 
   let renderArray = [array];
   await googleSheetsInstance.spreadsheets.values.update({
@@ -88,5 +101,16 @@ helpers.setStockBalance = async function (array) {
     },
   });
 };
+
+helpers.countFormatter = (num) => (num === 1 ? 'товара' : 'товаров');
+
+helpers.getActualStockSheetId = async () => {
+  const result = await getMeta();
+  return result[0].stockSheet
+};
+
+getMeta = async () => await Meta.find({}, { _id: 0, createdAt: 0, updatedAt: 0, __v: 0 });
+
+getProductShortName = (name) => productCells.find(product => product.name === name).shortName;
 
 module.exports = helpers;
